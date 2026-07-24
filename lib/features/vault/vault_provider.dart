@@ -10,6 +10,12 @@ final vaultEntriesProvider = FutureProvider<List<VaultEntry>>((ref) async {
   return ref.read(vaultServiceProvider).scanDirectory(vaultPath);
 });
 
+final vaultTreeProvider = FutureProvider<VaultTreeNode?>((ref) async {
+  final vaultPath = await ref.read(vaultPathProvider.future);
+  if (vaultPath == null) return null;
+  return ref.read(vaultServiceProvider).scanTree(vaultPath);
+});
+
 final activeNoteIdsProvider = FutureProvider<Set<String>>((ref) async {
   final db = ref.read(databaseProvider);
   final notes = await db.allActiveNotes();
