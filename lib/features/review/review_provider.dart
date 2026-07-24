@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/database/database.dart';
+import '../../data/settings_store.dart';
 import '../../services/sm2_engine.dart';
 import '../../services/ai_service.dart';
 import '../../services/prompt_service.dart';
@@ -191,12 +192,14 @@ class ReviewNotifier extends StateNotifier<ReviewState> {
 
     final db = _ref.read(databaseProvider);
     final existing = await db.recordForNote(item.noteId);
+    final customIntervals = await SettingsStore.getSm2Intervals();
 
     final result = Sm2Engine.calculate(
       quality: score,
       currentInterval: existing?.sm2Interval ?? 1.0,
       currentEaseFactor: existing?.sm2EaseFactor ?? 2.5,
       currentRepetitions: existing?.sm2Repetitions ?? 0,
+      customIntervals: customIntervals,
     );
 
     await db.upsertRecord(ReviewRecordsCompanion.insert(

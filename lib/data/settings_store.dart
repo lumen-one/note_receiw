@@ -55,7 +55,11 @@ class SettingsStore {
     final prefs = await _prefs;
     final json = prefs.getString(_keyIntervals);
     if (json == null) return [1, 6, 15, 38, 95, 238];
-    return (jsonDecode(json) as List).cast<int>();
+    try {
+      return (jsonDecode(json) as List).map((e) => (e as num).toInt()).toList();
+    } catch (_) {
+      return [1, 6, 15, 38, 95, 238];
+    }
   }
 
   static Future<void> setSm2Intervals(List<int> intervals) async {

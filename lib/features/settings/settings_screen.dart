@@ -298,24 +298,53 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       child: Row(
                         children: [
                           Text('第${i + 1}次: ', style: const TextStyle(fontSize: 14)),
-                          SizedBox(
-                            width: 60,
-                            child: TextField(
-                              controller: TextEditingController(text: '$val'),
-                              keyboardType: TextInputType.number,
-                              decoration: const InputDecoration(
-                                isDense: true,
-                                contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                                border: OutlineInputBorder(),
+                          GestureDetector(
+                            onTap: () async {
+                              final controller = TextEditingController(text: '$val');
+                              final result = await showDialog<int>(
+                                context: context,
+                                builder: (ctx) => AlertDialog(
+                                  title: Text('第${i + 1}次间隔（天）'),
+                                  content: TextField(
+                                    controller: controller,
+                                    keyboardType: TextInputType.number,
+                                    autofocus: true,
+                                    decoration: const InputDecoration(
+                                      border: OutlineInputBorder(),
+                                      hintText: '输入天数',
+                                    ),
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.of(ctx).pop(),
+                                      child: const Text('取消'),
+                                    ),
+                                    FilledButton(
+                                      onPressed: () {
+                                        final n = int.tryParse(controller.text);
+                                        if (n != null && n > 0) {
+                                          Navigator.of(ctx).pop(n);
+                                        }
+                                      },
+                                      child: const Text('确定'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                              controller.dispose();
+                              if (result != null && result > 0) {
+                                final copy = List<int>.from(_intervals);
+                                copy[i] = result;
+                                _setIntervals(copy);
+                              }
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              decoration: BoxDecoration(
+                                border: Border.all(color: Theme.of(context).colorScheme.outline),
+                                borderRadius: BorderRadius.circular(8),
                               ),
-                              onSubmitted: (text) {
-                                final n = int.tryParse(text);
-                                if (n != null && n > 0) {
-                                  final copy = List<int>.from(_intervals);
-                                  copy[i] = n;
-                                  _setIntervals(copy);
-                                }
-                              },
+                              child: Text('$val', style: const TextStyle(fontSize: 14)),
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -333,7 +362,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   }),
                   const SizedBox(height: 8),
                   OutlinedButton.icon(
-                    onPressed: () => _setIntervals([..._intervals, 30]),
+                    onPressed: () => _setIntervals([..._intervals, _intervals.last]),
                     icon: const Icon(Icons.add, size: 18),
                     label: const Text('添加间隔'),
                   ),
