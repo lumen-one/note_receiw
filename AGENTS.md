@@ -13,7 +13,7 @@ Flutter Android 应用，AI + 遗忘曲线复习 Obsidian 笔记。31 个 Dart �
 ## 已知问题 / 待修复
 1. **workmanager 本地补丁** — `packages/workmanager/` 是对 0.5.2 的 Kotlin patch，后续应升级到官方新版
 2. **FilePicker 路径** — settings_screen 的 `_resolvePath()` 处理 content URI 转真实路径，实测可能需调整
-3. **遗忘曲线概览** — 首页的「遗忘曲线概览」区域未实现，显示「即将支持」
+3. ~~遗忘曲线概览 — 首页的「遗忘曲线概览」区域未实现，显示「即将支持」~~ ✅ 已实现 fl_chart 图表
 4. **Drift 编译** — 改数据库表后必须跑 `dart run build_runner build --delete-conflicting-outputs`
 5. **Android 编译标志** — 当前需 `--android-skip-build-dependency-validation`，因为 Gradle/AGP/Kotlin 版本匹配问题
 
@@ -47,8 +47,17 @@ flutter build apk --release --android-skip-build-dependency-validation
 4. 复习完后可自由聊天
 
 ## 遗留 TODO
-- [ ] 首页遗忘曲线可视化图表
-- [ ] 自由聊天上下文携带用户笔记库
+- [x] 首页遗忘曲线可视化图表
+- [x] 自由聊天上下文携带用户笔记库（通过 @ 笔记名实现）
 - [ ] workmanager 升级到官方兼容版本
-- [ ] 暗色主题自动跟随系统
-- [ ] 设置中遗忘曲线间隔自定义
+- [x] 暗色主题自动跟随系统
+- [x] 设置中遗忘曲线间隔自定义
+
+## 新增功能 (2026-07-25)
+- [x] VaultBrowser 文件夹树展开/折叠 + 文件计数
+- [x] VaultBrowser 搜索（200ms 防抖，匹配文件名）
+- [x] 自由聊天 @ 引用笔记（自动补全提示，已监控/未监控标识）
+- [x] 聊天代替复习（结束聊天时自动更新 SM-2）
+- [x] 遗忘曲线 30 天复习历史柱状图
+- [x] 深色模式跟随系统设置
+- [x] 自定义遗忘曲线间隔天数
