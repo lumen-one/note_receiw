@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../services/vault_service.dart';
@@ -22,6 +23,7 @@ class _VaultBrowserScreenState extends ConsumerState<VaultBrowserScreen> {
   bool _isSearching = false;
   String _searchQuery = '';
   final _searchController = TextEditingController();
+  Timer? _debounce;
 
   @override
   void initState() {
@@ -31,6 +33,7 @@ class _VaultBrowserScreenState extends ConsumerState<VaultBrowserScreen> {
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -97,7 +100,9 @@ class _VaultBrowserScreenState extends ConsumerState<VaultBrowserScreen> {
       hasReviewTag: entry.hasReviewTag,
       isActive: active,
     );
-    setState(() => _activeStates[path] = active);
+    if (mounted) {
+      setState(() => _activeStates[path] = active);
+    }
   }
 
   List<VaultEntry> _filteredEntries() {
@@ -142,21 +147,23 @@ class _VaultBrowserScreenState extends ConsumerState<VaultBrowserScreen> {
       );
     }
 
-    return ListView(
+    final children = node.children;
+    return ListView.builder(
       padding: const EdgeInsets.all(8),
-      children: node.children.map((child) {
+      itemCount: children.length,
+      itemBuilder: (context, index) {
+        final child = children[index];
         if (child.isDirectory) {
           return _buildFolderTile(child);
-        } else {
-          return NoteTile(
-            name: child.name,
-            path: child.relativePath,
-            hasReviewTag: child.hasReviewTag,
-            isActive: _activeStates[child.relativePath] ?? false,
-            onToggle: (active) => _toggle(child.relativePath, active),
-          );
         }
-      }).toList(),
+        return NoteTile(
+          name: child.name,
+          path: child.relativePath,
+          hasReviewTag: child.hasReviewTag,
+          isActive: _activeStates[child.relativePath] ?? false,
+          onToggle: (active) => _toggle(child.relativePath, active),
+        );
+      },
     );
   }
 
@@ -270,9 +277,14 @@ class _VaultBrowserScreenState extends ConsumerState<VaultBrowserScreen> {
                                   : null,
                             ),
                             onChanged: (value) {
-                              setState(() {
-                                _searchQuery = value;
-                                _isSearching = value.isNotEmpty;
+                              _debounce?.cancel();
+                              _debounce = Timer(const Duration(milliseconds: 200), () {
+                                if (mounted) {
+                                  setState(() {
+                                    _searchQuery = value;
+                                    _isSearching = value.isNotEmpty;
+                                  });
+                                }
                               });
                             },
                           ),
