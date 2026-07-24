@@ -44,34 +44,41 @@ class VaultService {
 
   Future<VaultTreeNode> scanTree(String rootPath) async {
     final rootDir = Directory(rootPath);
-    return _buildNode(rootDir, rootPath, '');
+    if (!await rootDir.exists()) {
+      return VaultTreeNode(
+        name: '',
+        relativePath: '',
+        absolutePath: rootPath,
+        isDirectory: true,
+        children: [],
+        fileCount: 0,
+      );
+    }
+    return _buildNode(rootDir, rootPath);
   }
 
-  Future<VaultTreeNode> _buildNode(Directory dir, String rootPath, String relativeParent) async {
-    final name = dir.path.split('/').last;
-    final isRoot = relativeParent.isEmpty;
-    final relativePath = isRoot ? '' : (relativeParent.isEmpty ? name : '$relativeParent/$name');
+  Future<VaultTreeNode> _buildNode(Directory dir, String rootPath) async {
     final children = <VaultTreeNode>[];
     int fileCount = 0;
 
     await for (final entity in dir.list()) {
       if (entity is Directory) {
-        final child = await _buildNode(entity, rootPath, relativePath.isEmpty && !isRoot ? relativePath : (relativePath.isEmpty ? '' : relativePath));
-        final childRelPath = isRoot ? entity.path.substring(rootPath.length + 1) : '$relativePath/${entity.path.split('/').last}';
-        final fixedChild = VaultTreeNode(
-          name: child.name,
-          relativePath: childRelPath,
-          absolutePath: child.absolutePath,
-          isDirectory: true,
-          children: child.children,
-          fileCount: child.fileCount,
-        );
+        final child = await _buildNode(entity, rootPath);
         fileCount += child.fileCount;
-        children.add(fixedChild);
+        children.add(child);
       } else if (entity is File && entity.path.endsWith('.md')) {
-        final content = await entity.readAsString();
-        final hasReviewTag = content.contains('#review');
-        var fileRelative = entity.path.substring(rootPath.length + 1);
+        bool hasReviewTag = false;
+        try {
+          final lines = await entity.openRead()
+              .transform(const SystemEncoding().decoder)
+              .transform(const LineSplitter())
+              .take(30)
+              .toList();
+          hasReviewTag = lines.any((line) => line.contains('#review'));
+        } catch (_) {
+          // If file can't be read, skip review tag detection
+        }
+        final fileRelative = entity.path.substring(rootPath.length + 1);
         children.add(VaultTreeNode(
           name: entity.path.split('/').last,
           relativePath: fileRelative,
@@ -88,9 +95,10 @@ class VaultService {
       return a.name.compareTo(b.name);
     });
 
+    final relPath = dir.path == rootPath ? '' : dir.path.substring(rootPath.length + 1);
     return VaultTreeNode(
-      name: name,
-      relativePath: relativePath,
+      name: dir.path.split('/').last,
+      relativePath: relPath,
       absolutePath: dir.path,
       isDirectory: true,
       children: children,
