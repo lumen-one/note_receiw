@@ -18,13 +18,16 @@ class Sm2Engine {
     required double currentInterval,
     required double currentEaseFactor,
     required int currentRepetitions,
+    List<int>? customIntervals,
   }) {
     double newInterval;
     int newRepetitions;
     double newEaseFactor;
 
     if (quality >= 3) {
-      if (currentRepetitions == 0) {
+      if (customIntervals != null && currentRepetitions < customIntervals.length) {
+        newInterval = customIntervals[currentRepetitions].toDouble();
+      } else if (currentRepetitions == 0) {
         newInterval = 1;
       } else if (currentRepetitions == 1) {
         newInterval = 6;

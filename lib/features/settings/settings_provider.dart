@@ -41,3 +41,7 @@ final notifyHourProvider = FutureProvider<int>((ref) async {
 final notifyMinuteProvider = FutureProvider<int>((ref) async {
   return SettingsStore.getNotifyMinute();
 });
+
+final sm2IntervalsProvider = FutureProvider<List<int>>((ref) async {
+  return SettingsStore.getSm2Intervals();
+});

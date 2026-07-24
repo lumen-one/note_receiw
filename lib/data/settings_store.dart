@@ -1,8 +1,10 @@
+import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class SettingsStore {
   static const _keyVaultPath = 'vault_path';
   static const _keyReviewCount = 'review_count';
+  static const _keyIntervals = 'sm2_intervals';
   static const _keyNotifyHour = 'notify_hour';
   static const _keyNotifyMinute = 'notify_minute';
 
@@ -47,5 +49,22 @@ class SettingsStore {
   static Future<void> setNotifyMinute(int minute) async {
     final prefs = await _prefs;
     await prefs.setInt(_keyNotifyMinute, minute);
+  }
+
+  static Future<List<int>> getSm2Intervals() async {
+    final prefs = await _prefs;
+    final json = prefs.getString(_keyIntervals);
+    if (json == null) return [1, 6, 15, 38, 95, 238];
+    return (jsonDecode(json) as List).cast<int>();
+  }
+
+  static Future<void> setSm2Intervals(List<int> intervals) async {
+    final prefs = await _prefs;
+    await prefs.setString(_keyIntervals, jsonEncode(intervals));
+  }
+
+  static Future<void> resetSm2Intervals() async {
+    final prefs = await _prefs;
+    await prefs.remove(_keyIntervals);
   }
 }

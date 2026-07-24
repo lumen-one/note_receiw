@@ -20,6 +20,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   int _reviewCount = 5;
   int _notifyHour = 20;
   int _notifyMinute = 0;
+  List<int> _intervals = [1, 6, 15, 38, 95, 238];
 
   @override
   void initState() {
@@ -36,11 +37,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final reviewCount = await SettingsStore.getReviewCount();
     final notifyHour = await SettingsStore.getNotifyHour();
     final notifyMinute = await SettingsStore.getNotifyMinute();
+    final intervals = await SettingsStore.getSm2Intervals();
     setState(() {
       _vaultPath = vaultPath;
       _reviewCount = reviewCount;
       _notifyHour = notifyHour;
       _notifyMinute = notifyMinute;
+      _intervals = intervals;
     });
   }
 
@@ -75,6 +78,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     await SettingsStore.setReviewCount(count);
     setState(() => _reviewCount = count);
     ref.invalidate(reviewCountProvider);
+  }
+
+  Future<void> _setIntervals(List<int> intervals) async {
+    await SettingsStore.setSm2Intervals(intervals);
+    setState(() => _intervals = intervals);
+    ref.invalidate(sm2IntervalsProvider);
   }
 
   Future<void> _setNotifyTime(int hour, int minute) async {
@@ -268,6 +277,69 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         ? () => _setReviewCount(_reviewCount + 1)
                         : null,
                     icon: const Icon(Icons.add),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          _sectionHeader('遗忘曲线间隔'),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  ..._intervals.asMap().entries.map((entry) {
+                    final i = entry.key;
+                    final val = entry.value;
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        children: [
+                          Text('第${i + 1}次: ', style: const TextStyle(fontSize: 14)),
+                          SizedBox(
+                            width: 60,
+                            child: TextField(
+                              controller: TextEditingController(text: '$val'),
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(
+                                isDense: true,
+                                contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                border: OutlineInputBorder(),
+                              ),
+                              onSubmitted: (text) {
+                                final n = int.tryParse(text);
+                                if (n != null && n > 0) {
+                                  final copy = List<int>.from(_intervals);
+                                  copy[i] = n;
+                                  _setIntervals(copy);
+                                }
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          const Text('天'),
+                          const Spacer(),
+                          IconButton(
+                            icon: const Icon(Icons.remove_circle_outline, size: 20),
+                            onPressed: _intervals.length > 1
+                                ? () => _setIntervals(List<int>.from(_intervals)..removeAt(i))
+                                : null,
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: () => _setIntervals([..._intervals, 30]),
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('添加间隔'),
+                  ),
+                  TextButton(
+                    onPressed: () => _setIntervals([1, 6, 15, 38, 95, 238]),
+                    child: const Text('恢复默认'),
                   ),
                 ],
               ),
