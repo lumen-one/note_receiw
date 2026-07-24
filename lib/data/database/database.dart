@@ -186,7 +186,7 @@ class AppDatabase extends _$AppDatabase {
     }
 
     final result = <DailyReviewCount>[];
-    for (int i = 29; i >= 0; i--) {
+    for (int i = 30; i >= 0; i--) {
       final day = start.add(Duration(days: i));
       final key = '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
       result.add(DailyReviewCount(date: day, count: counts[key] ?? 0));

@@ -267,6 +267,7 @@ class _VaultBrowserScreenState extends ConsumerState<VaultBrowserScreen> {
                                   ? IconButton(
                                       icon: const Icon(Icons.clear),
                                       onPressed: () {
+                                        _debounce?.cancel();
                                         _searchController.clear();
                                         setState(() {
                                           _searchQuery = '';

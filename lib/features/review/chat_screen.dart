@@ -8,6 +8,7 @@ import '../../services/ai_service.dart';
 import '../../services/sm2_engine.dart';
 import '../settings/settings_provider.dart';
 import 'review_provider.dart';
+import '../home/home_provider.dart';
 import 'widgets/chat_bubble.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
