@@ -62,6 +62,7 @@ class NoteReviewApp extends StatelessWidget {
       title: 'NoteReview',
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
+      themeMode: ThemeMode.system,
       routerConfig: router,
       debugShowCheckedModeBanner: false,
     );
