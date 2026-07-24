@@ -48,7 +48,13 @@ final router = GoRouter(
     GoRoute(
       path: '/review/chat',
       parentNavigatorKey: _rootNavigatorKey,
-      builder: (context, state) => const ChatScreen(sessionType: 'free_chat'),
+      builder: (context, state) {
+        final notes = state.uri.queryParameters['notes'];
+        return ChatScreen(
+          sessionType: 'free_chat',
+          initialNoteIds: notes,
+        );
+      },
     ),
   ],
 );
