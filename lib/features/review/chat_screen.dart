@@ -54,24 +54,28 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Future<void> _loadNotes() async {
-    final db = ref.read(databaseProvider);
-    final all = await db.allNotes();
-    final active = await db.allActiveNotes();
-    setState(() {
-      _allNotes = all;
-      _activeNotes = active;
-    });
-
-    if (widget.initialNoteIds != null && widget.initialNoteIds!.isNotEmpty) {
-      final ids = widget.initialNoteIds!
-          .split(',')
-          .map((s) => int.tryParse(s.trim()))
-          .where((id) => id != null)
-          .cast<int>()
-          .toList();
+    try {
+      final db = ref.read(databaseProvider);
+      final all = await db.allNotes();
+      final active = await db.allActiveNotes();
       setState(() {
-        _mentionedNoteIds.addAll(ids);
+        _allNotes = all;
+        _activeNotes = active;
       });
+
+      if (widget.initialNoteIds != null && widget.initialNoteIds!.isNotEmpty) {
+        final ids = widget.initialNoteIds!
+            .split(',')
+            .map((s) => int.tryParse(s.trim()))
+            .where((id) => id != null)
+            .cast<int>()
+            .toList();
+        setState(() {
+          _mentionedNoteIds.addAll(ids);
+        });
+      }
+    } catch (e) {
+      // Notes will be empty lists, chat still functional
     }
   }
 
@@ -128,7 +132,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     });
   }
 
-  String _buildContextPrompt() {
+  Future<String> _buildContextPrompt() async {
     if (_mentionedNoteIds.isEmpty) {
       return '你是一位和我一起学习的挚友。我们可以自由讨论任何话题，包括笔记中的知识。';
     }
@@ -142,11 +146,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       if (filePath.isNotEmpty) {
         try {
           final file = File(filePath);
-          if (file.existsSync()) {
-            final full = file.readAsStringSync();
+          if (await file.exists()) {
+            final full = await file.readAsString();
             content = full.length > 2000 ? '${full.substring(0, 2000)}\n\n...(截断)' : full;
           }
-        } catch (_) {}
+        } catch (_) {
+          content = '(无法读取文件内容)';
+        }
       }
       contextParts.add('- ${note.fileName}（来自 ${note.filePath}）：\n$content');
     }
@@ -168,7 +174,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     try {
       final aiService = ref.read(aiServiceProvider);
-      final systemPrompt = _buildContextPrompt();
+      final systemPrompt = await _buildContextPrompt();
       final fullMessages = [
         {'role': 'system', 'content': systemPrompt},
         ..._messages,
@@ -203,42 +209,50 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Future<void> _endChat() async {
     if (_mentionedNoteIds.isEmpty) return;
 
-    final db = ref.read(databaseProvider);
-    final activeMentioned = _activeNotes
-        .where((n) => _mentionedNoteIds.contains(n.id))
-        .toList();
+    try {
+      final db = ref.read(databaseProvider);
+      final activeMentioned = _activeNotes
+          .where((n) => _mentionedNoteIds.contains(n.id))
+          .toList();
 
-    if (activeMentioned.isEmpty) return;
+      if (activeMentioned.isEmpty) return;
 
-    final customIntervals = await SettingsStore.getSm2Intervals();
-    int updated = 0;
-    for (final note in activeMentioned) {
-      final existing = await db.recordForNote(note.id);
-      final result = Sm2Engine.calculate(
-        quality: 3,
-        currentInterval: existing?.sm2Interval ?? 1.0,
-        currentEaseFactor: existing?.sm2EaseFactor ?? 2.5,
-        currentRepetitions: existing?.sm2Repetitions ?? 0,
-        customIntervals: customIntervals,
-      );
-      await db.upsertRecord(ReviewRecordsCompanion.insert(
-        noteId: Value(note.id),
-        sm2Interval: Value(result.interval),
-        sm2EaseFactor: Value(result.easeFactor),
-        sm2Repetitions: Value(result.repetitions),
-        nextReviewDate: result.nextReviewDate,
-        lastReviewDate: Value(DateTime.now()),
-        lastScore: const Value(3),
-      ));
-      updated++;
-    }
+      final customIntervals = await SettingsStore.getSm2Intervals();
+      int updated = 0;
+      for (final note in activeMentioned) {
+        final existing = await db.recordForNote(note.id);
+        final result = Sm2Engine.calculate(
+          quality: 3,
+          currentInterval: existing?.sm2Interval ?? 1.0,
+          currentEaseFactor: existing?.sm2EaseFactor ?? 2.5,
+          currentRepetitions: existing?.sm2Repetitions ?? 0,
+          customIntervals: customIntervals,
+        );
+        await db.upsertRecord(ReviewRecordsCompanion.insert(
+          noteId: Value(note.id),
+          sm2Interval: Value(result.interval),
+          sm2EaseFactor: Value(result.easeFactor),
+          sm2Repetitions: Value(result.repetitions),
+          nextReviewDate: result.nextReviewDate,
+          lastReviewDate: Value(DateTime.now()),
+          lastScore: const Value(3),
+        ));
+        updated++;
+      }
 
-    ref.invalidate(overdueProvider);
+      ref.invalidate(overdueProvider);
 
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('已通过聊天复习 $updated 篇笔记')),
-      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已通过聊天复习 $updated 篇笔记')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('记录复习失败: $e')),
+        );
+      }
     }
   }
 
