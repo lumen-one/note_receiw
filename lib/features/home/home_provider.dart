@@ -19,6 +19,11 @@ final overdueProvider = FutureProvider<OverdueInfo>((ref) async {
   return OverdueInfo(count: records.length, records: records);
 });
 
+final reviewHistoryProvider = FutureProvider<List<DailyReviewCount>>((ref) async {
+  final db = ref.read(databaseProvider);
+  return db.reviewHistoryLast30Days();
+});
+
 class OverdueInfo {
   final int count;
   final List<JoinedRecord> records;

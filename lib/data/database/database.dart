@@ -14,6 +14,13 @@ class JoinedRecord {
   JoinedRecord({required this.note, required this.record});
 }
 
+class DailyReviewCount {
+  final DateTime date;
+  final int count;
+
+  DailyReviewCount({required this.date, required this.count});
+}
+
 @DriftDatabase(tables: [
   NoteFiles,
   ReviewRecords,
@@ -160,6 +167,31 @@ class AppDatabase extends _$AppDatabase {
             noteFiles.isActive.equals(true),
       );
     return query.map((_) => 1).get().then((l) => l.length);
+  }
+
+  Future<List<DailyReviewCount>> reviewHistoryLast30Days() async {
+    final thirtyDaysAgo = DateTime.now().subtract(const Duration(days: 30));
+    final start = DateTime(thirtyDaysAgo.year, thirtyDaysAgo.month, thirtyDaysAgo.day);
+
+    final rows = await (select(reviewRecords)
+          ..where((t) => t.lastReviewDate.isBiggerThanValue(start))
+        ).get();
+
+    final counts = <String, int>{};
+    for (final row in rows) {
+      if (row.lastReviewDate == null) continue;
+      final date = row.lastReviewDate!;
+      final key = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+      counts[key] = (counts[key] ?? 0) + 1;
+    }
+
+    final result = <DailyReviewCount>[];
+    for (int i = 29; i >= 0; i--) {
+      final day = start.add(Duration(days: i));
+      final key = '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
+      result.add(DailyReviewCount(date: day, count: counts[key] ?? 0));
+    }
+    return result;
   }
 
   Future<ReviewRecord> upsertRecord(ReviewRecordsCompanion data) {

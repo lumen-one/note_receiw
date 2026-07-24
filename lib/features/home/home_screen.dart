@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:fl_chart/fl_chart.dart';
+import '../../data/database/database.dart';
 import '../settings/settings_provider.dart';
 import 'home_provider.dart';
 
@@ -102,6 +104,104 @@ class HomeScreen extends ConsumerWidget {
                 ),
               ),
             ],
+            const SizedBox(height: 24),
+            Text(
+              '遗忘曲线概览',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+            const SizedBox(height: 8),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: ref.watch(reviewHistoryProvider).when(
+                  data: (history) {
+                    final maxCount = history.fold(0, (p, c) => c.count > p ? c.count : p);
+                    final maxY = maxCount < 3 ? 3 : maxCount;
+                    return SizedBox(
+                      height: 180,
+                      child: BarChart(
+                        BarChartData(
+                          alignment: BarChartAlignment.spaceAround,
+                          maxY: maxY.toDouble(),
+                          barTouchData: BarTouchData(
+                            touchTooltipData: BarTouchTooltipData(
+                              getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                                final day = history[groupIndex];
+                                return BarTooltipItem(
+                                  '${day.date.month}/${day.date.day}\n${day.count}篇',
+                                  const TextStyle(color: Colors.white, fontSize: 12),
+                                );
+                              },
+                            ),
+                          ),
+                          titlesData: FlTitlesData(
+                            show: true,
+                            bottomTitles: AxisTitles(
+                              sideTitles: SideTitles(
+                                showTitles: true,
+                                getTitlesWidget: (value, meta) {
+                                  final idx = value.toInt();
+                                  if (idx < 0 || idx >= history.length) return const SizedBox();
+                                  if (idx % 7 != 0) return const SizedBox();
+                                  final day = history[idx];
+                                  return Padding(
+                                    padding: const EdgeInsets.only(top: 4),
+                                    child: Text(
+                                      '${day.date.month}/${day.date.day}',
+                                      style: const TextStyle(fontSize: 10),
+                                    ),
+                                  );
+                                },
+                                reservedSize: 20,
+                              ),
+                            ),
+                            leftTitles: AxisTitles(
+                              sideTitles: SideTitles(
+                                showTitles: true,
+                                reservedSize: 28,
+                                getTitlesWidget: (value, meta) {
+                                  if (value == 0) return const SizedBox();
+                                  return Text(
+                                    '${value.toInt()}',
+                                    style: const TextStyle(fontSize: 10),
+                                  );
+                                },
+                              ),
+                            ),
+                            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                          ),
+                          borderData: FlBorderData(show: false),
+                          barGroups: history.asMap().entries.map((entry) {
+                            return BarChartGroupData(
+                              x: entry.key,
+                              barRods: [
+                                BarChartRodData(
+                                  toY: entry.value.count.toDouble(),
+                                  color: entry.value.count > 0
+                                      ? Theme.of(context).colorScheme.primary
+                                      : Theme.of(context).colorScheme.surfaceContainerHighest,
+                                  width: 6,
+                                  borderRadius: const BorderRadius.vertical(top: Radius.circular(3)),
+                                ),
+                              ],
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                    );
+                  },
+                  loading: () => const SizedBox(
+                    height: 180,
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                  error: (e, _) => SizedBox(
+                    height: 180,
+                    child: Center(child: Text('加载失败: $e')),
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
       ),
