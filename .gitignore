@@ -1,0 +1,13 @@
+.dart_tool/
+build/
+*.g.dart
+*.freezed.dart
+*.json.dart
+.packages
+.pub/
+pubspec.lock
+flutter_*.png
+*.iml
+.idea/
+.metadata
+*.lock
