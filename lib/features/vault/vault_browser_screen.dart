@@ -14,15 +14,25 @@ class VaultBrowserScreen extends ConsumerStatefulWidget {
 }
 
 class _VaultBrowserScreenState extends ConsumerState<VaultBrowserScreen> {
-  List<VaultEntry> _entries = [];
+  List<VaultEntry> _allEntries = [];
+  VaultTreeNode? _tree;
   Map<String, bool> _activeStates = {};
   bool _loading = true;
   bool _permissionDenied = false;
+  bool _isSearching = false;
+  String _searchQuery = '';
+  final _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -45,14 +55,16 @@ class _VaultBrowserScreenState extends ConsumerState<VaultBrowserScreen> {
       setState(() => _loading = false);
       return;
     }
+
     final service = ref.read(vaultServiceProvider);
-    final entries = await service.scanDirectory(vaultPath);
+    final tree = await service.scanTree(vaultPath);
+    final allEntries = service.flattenTree(tree);
     final db = ref.read(databaseProvider);
     final activeNotes = await db.allActiveNotes();
     final activePaths = activeNotes.map((n) => n.filePath).toSet();
 
     final states = <String, bool>{};
-    for (final entry in entries) {
+    for (final entry in allEntries) {
       if (entry.hasReviewTag && !activePaths.contains(entry.relativePath)) {
         await db.upsertNote(
           filePath: entry.relativePath,
@@ -67,7 +79,8 @@ class _VaultBrowserScreenState extends ConsumerState<VaultBrowserScreen> {
 
     if (mounted) {
       setState(() {
-        _entries = entries;
+        _tree = tree;
+        _allEntries = allEntries;
         _activeStates = states;
         _loading = false;
       });
@@ -76,7 +89,7 @@ class _VaultBrowserScreenState extends ConsumerState<VaultBrowserScreen> {
 
   Future<void> _toggle(String path, bool active) async {
     final db = ref.read(databaseProvider);
-    final entry = _entries.firstWhere((e) => e.relativePath == path);
+    final entry = _allEntries.firstWhere((e) => e.relativePath == path);
     await db.upsertNote(
       filePath: entry.relativePath,
       fileName: entry.name,
@@ -85,6 +98,102 @@ class _VaultBrowserScreenState extends ConsumerState<VaultBrowserScreen> {
       isActive: active,
     );
     setState(() => _activeStates[path] = active);
+  }
+
+  List<VaultEntry> _filteredEntries() {
+    if (_searchQuery.isEmpty) return _allEntries;
+    final q = _searchQuery.toLowerCase();
+    return _allEntries
+        .where((e) => e.name.toLowerCase().contains(q))
+        .toList();
+  }
+
+  Widget _buildTree(VaultTreeNode node) {
+    if (_isSearching) {
+      final filtered = _filteredEntries();
+      if (filtered.isEmpty) {
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              children: [
+                Icon(Icons.search_off, size: 48,
+                    color: Theme.of(context).colorScheme.primary),
+                const SizedBox(height: 8),
+                Text('未找到匹配 "$_searchQuery" 的笔记'),
+              ],
+            ),
+          ),
+        );
+      }
+      return ListView.builder(
+        padding: const EdgeInsets.all(8),
+        itemCount: filtered.length,
+        itemBuilder: (context, index) {
+          final entry = filtered[index];
+          return NoteTile(
+            name: entry.name,
+            path: entry.relativePath,
+            hasReviewTag: entry.hasReviewTag,
+            isActive: _activeStates[entry.relativePath] ?? false,
+            onToggle: (active) => _toggle(entry.relativePath, active),
+          );
+        },
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.all(8),
+      children: node.children.map((child) {
+        if (child.isDirectory) {
+          return _buildFolderTile(child);
+        } else {
+          return NoteTile(
+            name: child.name,
+            path: child.relativePath,
+            hasReviewTag: child.hasReviewTag,
+            isActive: _activeStates[child.relativePath] ?? false,
+            onToggle: (active) => _toggle(child.relativePath, active),
+          );
+        }
+      }).toList(),
+    );
+  }
+
+  Widget _buildFolderTile(VaultTreeNode folder) {
+    final hasActiveChild = folder.children.any((c) =>
+        !c.isDirectory && (_activeStates[c.relativePath] ?? false));
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 2),
+      child: ExpansionTile(
+        leading: Icon(
+          hasActiveChild ? Icons.folder_special : Icons.folder,
+          color: hasActiveChild
+              ? Theme.of(context).colorScheme.primary
+              : null,
+        ),
+        title: Text(folder.name,
+            style: const TextStyle(fontWeight: FontWeight.w600)),
+        subtitle: Text(
+          '${folder.fileCount} 篇笔记',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        initiallyExpanded: false,
+        childrenPadding: const EdgeInsets.only(left: 16),
+        children: folder.children.map((child) {
+          if (child.isDirectory) {
+            return _buildFolderTile(child);
+          }
+          return NoteTile(
+            name: child.name,
+            path: child.relativePath,
+            hasReviewTag: child.hasReviewTag,
+            isActive: _activeStates[child.relativePath] ?? false,
+            onToggle: (active) => _toggle(child.relativePath, active),
+          );
+        }).toList(),
+      ),
+    );
   }
 
   @override
@@ -114,7 +223,7 @@ class _VaultBrowserScreenState extends ConsumerState<VaultBrowserScreen> {
                     ),
                   ),
                 )
-              : _entries.isEmpty
+              : _tree == null || _tree!.fileCount == 0
                   ? Center(
                       child: Padding(
                         padding: const EdgeInsets.all(24),
@@ -134,21 +243,42 @@ class _VaultBrowserScreenState extends ConsumerState<VaultBrowserScreen> {
                         ),
                       ),
                     )
-                  : ListView.builder(
-                      padding: const EdgeInsets.all(8),
-                      itemCount: _entries.length,
-                      itemBuilder: (context, index) {
-                        final entry = _entries[index];
-                        return NoteTile(
-                          name: entry.name,
-                          path: entry.relativePath,
-                          hasReviewTag: entry.hasReviewTag,
-                          isActive:
-                              _activeStates[entry.relativePath] ?? false,
-                          onToggle: (active) =>
-                              _toggle(entry.relativePath, active),
-                        );
-                      },
+                  : Column(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                          child: TextField(
+                            controller: _searchController,
+                            decoration: InputDecoration(
+                              hintText: '搜索笔记...',
+                              prefixIcon: const Icon(Icons.search),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              isDense: true,
+                              suffixIcon: _searchQuery.isNotEmpty
+                                  ? IconButton(
+                                      icon: const Icon(Icons.clear),
+                                      onPressed: () {
+                                        _searchController.clear();
+                                        setState(() {
+                                          _searchQuery = '';
+                                          _isSearching = false;
+                                        });
+                                      },
+                                    )
+                                  : null,
+                            ),
+                            onChanged: (value) {
+                              setState(() {
+                                _searchQuery = value;
+                                _isSearching = value.isNotEmpty;
+                              });
+                            },
+                          ),
+                        ),
+                        Expanded(child: _buildTree(_tree!)),
+                      ],
                     ),
     );
   }
