@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:drift/drift.dart';
+import 'package:drift/drift.dart' hide Column;
 import '../../data/database/database.dart';
 import '../../services/vault_service.dart';
 import '../../services/permission_service.dart';
