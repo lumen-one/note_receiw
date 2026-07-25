@@ -69,11 +69,9 @@ class VaultService {
       } else if (entity is File && entity.path.endsWith('.md')) {
         bool hasReviewTag = false;
         try {
-          final lines = await entity.openRead()
-              .transform(const SystemEncoding().decoder)
-              .transform(const LineSplitter())
-              .take(30)
-              .toList();
+          final lines = await entity
+              .readAsLines()
+              .then((l) => l.take(30).toList());
           hasReviewTag = lines.any((line) => line.contains('#review'));
         } catch (_) {
           // If file can't be read, skip review tag detection

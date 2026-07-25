@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:drift/drift.dart';
+import '../../data/database/database.dart';
 import '../../services/vault_service.dart';
 import '../../services/permission_service.dart';
 import '../settings/settings_provider.dart';
@@ -69,11 +71,18 @@ class _VaultBrowserScreenState extends ConsumerState<VaultBrowserScreen> {
     final states = <String, bool>{};
     for (final entry in allEntries) {
       if (entry.hasReviewTag && !activePaths.contains(entry.relativePath)) {
-        await db.upsertNote(
+        final note = await db.upsertNote(
           filePath: entry.relativePath,
           fileName: entry.name,
           hasReviewTag: true,
         );
+        final existing = await db.recordForNote(note.id);
+        if (existing == null) {
+          await db.upsertRecord(ReviewRecordsCompanion.insert(
+            noteId: Value(note.id),
+            nextReviewDate: DateTime.now(),
+          ));
+        }
         states[entry.relativePath] = true;
       } else {
         states[entry.relativePath] = activePaths.contains(entry.relativePath);
@@ -93,13 +102,22 @@ class _VaultBrowserScreenState extends ConsumerState<VaultBrowserScreen> {
   Future<void> _toggle(String path, bool active) async {
     final db = ref.read(databaseProvider);
     final entry = _allEntries.firstWhere((e) => e.relativePath == path);
-    await db.upsertNote(
+    final note = await db.upsertNote(
       filePath: entry.relativePath,
       fileName: entry.name,
       addedManually: active,
       hasReviewTag: entry.hasReviewTag,
       isActive: active,
     );
+    if (active) {
+      final existing = await db.recordForNote(note.id);
+      if (existing == null) {
+        await db.upsertRecord(ReviewRecordsCompanion.insert(
+          noteId: Value(note.id),
+          nextReviewDate: DateTime.now(),
+        ));
+      }
+    }
     if (mounted) {
       setState(() => _activeStates[path] = active);
     }

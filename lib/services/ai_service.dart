@@ -52,6 +52,10 @@ class AIService {
         return response.data['choices'][0]['message']['content'] as String;
       } on DioException catch (e) {
         lastError = e;
+        if (e.response != null) {
+          final detail = e.response!.data;
+          lastError = Exception('${e.message}: $detail');
+        }
         if (attempt == maxRetries) break;
         await Future.delayed(Duration(seconds: 2 * (attempt + 1)));
       }
@@ -82,6 +86,10 @@ class AIService {
         return response.data['choices'][0]['message']['content'] as String;
       } on DioException catch (e) {
         lastError = e;
+        if (e.response != null) {
+          final detail = e.response!.data;
+          lastError = Exception('${e.message}: $detail');
+        }
         if (attempt == maxRetries) break;
         await Future.delayed(Duration(seconds: 2 * (attempt + 1)));
       }
