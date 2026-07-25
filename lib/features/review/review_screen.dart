@@ -70,7 +70,6 @@ class ReviewScreen extends ConsumerWidget {
                 const SizedBox(height: 24),
                 FilledButton.icon(
                   onPressed: () async {
-                    await ref.read(databaseProvider).updateLastCheckTime(DateTime.now());
                     if (context.mounted) {
                       context.push('/review/start');
                     }
