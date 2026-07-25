@@ -48,7 +48,7 @@ flutter build apk --release --android-skip-build-dependency-validation
 
 ## 已知 Bug
 1. **聊天无历史记录** — `chat_screen.dart` 内存存储消息，未持久化到 `chat_messages` 表（已有表结构和方法）
-2. **聊天代替复习后逾期数量未刷新** — `_endChat()` 已 `ref.invalidate(overdueProvider)`，但需跨页面联动验证
+2. ~~激活笔记后「开始复习」显示暂无待复习~~ ✅ 已修复 — 创建 review_record 时 `nextReviewDate` 设为 `now - 1s`
 
 ## 遗留 TODO
 - [x] 首页遗忘曲线可视化图表

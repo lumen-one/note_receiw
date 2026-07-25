@@ -81,7 +81,7 @@ class _VaultBrowserScreenState extends ConsumerState<VaultBrowserScreen> {
         if (existing == null) {
           await db.upsertRecord(ReviewRecordsCompanion.insert(
             noteId: Value(note.id),
-            nextReviewDate: DateTime.now(),
+            nextReviewDate: DateTime.now().subtract(const Duration(seconds: 1)),
           ));
         }
         ref.invalidate(overdueProvider);
@@ -116,7 +116,7 @@ class _VaultBrowserScreenState extends ConsumerState<VaultBrowserScreen> {
       if (existing == null) {
         await db.upsertRecord(ReviewRecordsCompanion.insert(
           noteId: Value(note.id),
-          nextReviewDate: DateTime.now(),
+          nextReviewDate: DateTime.now().subtract(const Duration(seconds: 1)),
         ));
       }
       ref.invalidate(overdueProvider);
