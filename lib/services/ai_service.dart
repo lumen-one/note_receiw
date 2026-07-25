@@ -40,7 +40,7 @@ class AIService {
         final response = await _dio.post(
           '/chat/completions',
           data: {
-            'model': 'deepseek-chat',
+            'model': 'deepseek-v4-flash',
             'messages': messages,
             'temperature': 0.7,
             'max_tokens': 2048,
@@ -74,7 +74,7 @@ class AIService {
         final response = await _dio.post(
           '/chat/completions',
           data: {
-            'model': 'deepseek-chat',
+            'model': 'deepseek-v4-flash',
             'messages': messages,
             'temperature': 0.7,
             'max_tokens': 2048,

@@ -1,7 +1,7 @@
 class AppConstants {
   static const String appName = 'NoteReview';
   static const String deepseekBaseUrl = 'https://api.deepseek.com/v1';
-  static const String deepseekModel = 'deepseek-chat';
+  static const String deepseekModel = 'deepseek-v4-flash';
   static const int defaultQuestionCount = 5;
   static const int defaultNotifyHour = 20;
   static const int defaultNotifyMinute = 0;
