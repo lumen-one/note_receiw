@@ -46,12 +46,19 @@ flutter build apk --release --android-skip-build-dependency-validation
 3. 每晚 8 点有逾期笔记时通知 → 复习（AI 出题→作答→评价→评分→追问）
 4. 复习完后可自由聊天
 
+## 已知 Bug
+1. **聊天无历史记录** — `chat_screen.dart` 内存存储消息，未持久化到 `chat_messages` 表（已有表结构和方法）
+2. **聊天代替复习后逾期数量未刷新** — `_endChat()` 已 `ref.invalidate(overdueProvider)`，但需跨页面联动验证
+
 ## 遗留 TODO
 - [x] 首页遗忘曲线可视化图表
 - [x] 自由聊天上下文携带用户笔记库（通过 @ 笔记名实现）
 - [ ] workmanager 升级到官方兼容版本
 - [x] 暗色主题自动跟随系统
 - [x] 设置中遗忘曲线间隔自定义
+- [ ] 聊天消息持久化（存 DB，可查看历史）
+- [ ] 模型选择设置（当前硬编码 `deepseek-v4-flash`）
+- [ ] 复习完成后逾期计数实时刷新
 
 ## 新增功能 (2026-07-25)
 - [x] VaultBrowser 文件夹树展开/折叠 + 文件计数

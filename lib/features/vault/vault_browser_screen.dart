@@ -6,6 +6,7 @@ import '../../data/database/database.dart';
 import '../../services/vault_service.dart';
 import '../../services/permission_service.dart';
 import '../settings/settings_provider.dart';
+import '../home/home_provider.dart';
 import 'vault_provider.dart';
 import 'widgets/note_tile.dart';
 
@@ -83,6 +84,7 @@ class _VaultBrowserScreenState extends ConsumerState<VaultBrowserScreen> {
             nextReviewDate: DateTime.now(),
           ));
         }
+        ref.invalidate(overdueProvider);
         states[entry.relativePath] = true;
       } else {
         states[entry.relativePath] = activePaths.contains(entry.relativePath);
@@ -117,6 +119,7 @@ class _VaultBrowserScreenState extends ConsumerState<VaultBrowserScreen> {
           nextReviewDate: DateTime.now(),
         ));
       }
+      ref.invalidate(overdueProvider);
     }
     if (mounted) {
       setState(() => _activeStates[path] = active);
