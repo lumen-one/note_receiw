@@ -225,6 +225,71 @@ class AppDatabase extends _$AppDatabase {
     return result;
   }
 
+  Future<List<DailyReviewCount>> reviewHistoryForMonth(int year, int month) async {
+    final start = DateTime(year, month, 1);
+    final end = DateTime(year, month + 1, 1);
+
+    final rows = await (select(reviewRecords)
+          ..where((t) => t.lastReviewDate.isBiggerOrEqualValue(start))
+        ).get();
+
+    final counts = <String, int>{};
+    for (final row in rows) {
+      if (row.lastReviewDate == null) continue;
+      if (!row.lastReviewDate!.isBefore(end)) continue;
+      final date = row.lastReviewDate!;
+      final key = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+      counts[key] = (counts[key] ?? 0) + 1;
+    }
+
+    final result = <DailyReviewCount>[];
+    final daysInMonth = end.subtract(const Duration(days: 1)).day;
+    for (int d = 1; d <= daysInMonth; d++) {
+      final day = DateTime(year, month, d);
+      final key = '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
+      result.add(DailyReviewCount(date: day, count: counts[key] ?? 0));
+    }
+    return result;
+  }
+
+  Future<List<JoinedRecord>> _notesWithRecordsWhere(
+      bool Function(ReviewRecord) filter) async {
+    final activeNotes = await allActiveNotes();
+    if (activeNotes.isEmpty) return [];
+    final activeIds = activeNotes.map((n) => n.id).toList();
+    final records = await (select(reviewRecords)
+          ..where((t) => t.noteId.isIn(activeIds))
+        ).get();
+    final recordMap = {for (final r in records) r.noteId: r};
+    final result = <JoinedRecord>[];
+    for (final note in activeNotes) {
+      final record = recordMap[note.id];
+      if (record != null && filter(record)) {
+        result.add(JoinedRecord(note: note, record: record));
+      }
+    }
+    result.sort((a, b) => b.record!.lastReviewDate!.compareTo(a.record!.lastReviewDate!));
+    return result;
+  }
+
+  Future<List<JoinedRecord>> notesReviewedOnDay(DateTime day) async {
+    final start = DateTime(day.year, day.month, day.day);
+    final end = start.add(const Duration(days: 1));
+    return _notesWithRecordsWhere((r) =>
+        r.lastReviewDate != null &&
+        !r.lastReviewDate!.isBefore(start) &&
+        r.lastReviewDate!.isBefore(end));
+  }
+
+  Future<List<JoinedRecord>> notesReviewedInMonth(int year, int month) async {
+    final start = DateTime(year, month, 1);
+    final end = DateTime(year, month + 1, 1);
+    return _notesWithRecordsWhere((r) =>
+        r.lastReviewDate != null &&
+        !r.lastReviewDate!.isBefore(start) &&
+        r.lastReviewDate!.isBefore(end));
+  }
+
   Future<ReviewRecord> upsertRecord(ReviewRecordsCompanion data) {
     return into(reviewRecords).insertReturning(
       data,

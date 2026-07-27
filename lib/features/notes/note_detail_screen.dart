@@ -129,6 +129,45 @@ class NoteDetailScreen extends ConsumerWidget {
                   },
                 ),
               ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.visibility_off),
+                  label: const Text('解除监控笔记'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: theme.colorScheme.error,
+                  ),
+                  onPressed: () async {
+                    final confirmed = await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('确认解除监控'),
+                        content: const Text('解除监控后，此笔记将不再参与复习和统计。笔记文件本身不会被修改。'),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(ctx).pop(false),
+                            child: const Text('取消'),
+                          ),
+                          FilledButton(
+                            onPressed: () => Navigator.of(ctx).pop(true),
+                            child: const Text('解除'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (confirmed == true && context.mounted) {
+                      await db.updateNoteActive(noteId, false);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('已解除监控')),
+                        );
+                        Navigator.of(context).pop();
+                      }
+                    }
+                  },
+                ),
+              ),
             ],
           );
         },
