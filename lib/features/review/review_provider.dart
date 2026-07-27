@@ -175,19 +175,25 @@ class ReviewNotifier extends StateNotifier<ReviewState> {
           }
 
           if (hadNew) {
-            final prevLen = state.questions.length;
-            final wasWaiting = items.length > prevLen &&
-                prevLen == state.currentQuestionIndex + 1;
-            state = state.copyWith(
-              questions: List.from(items),
-              generatingText: currentText,
-              currentQuestionIndex: wasWaiting
-                  ? state.currentQuestionIndex + 1
-                  : state.currentQuestionIndex,
-              phase: wasWaiting || (state.phase == ReviewPhase.loading && items.length == 1)
-                  ? ReviewPhase.showingQuestions
-                  : state.phase,
-            );
+            if (state.phase == ReviewPhase.loading && state.questions.isNotEmpty) {
+              state = state.copyWith(
+                questions: List.from(items),
+                generatingText: currentText,
+                currentQuestionIndex: state.currentQuestionIndex + 1,
+                phase: ReviewPhase.showingQuestions,
+              );
+            } else if (state.questions.isEmpty && items.length == 1) {
+              state = state.copyWith(
+                questions: List.from(items),
+                generatingText: currentText,
+                phase: ReviewPhase.showingQuestions,
+              );
+            } else {
+              state = state.copyWith(
+                questions: List.from(items),
+                generatingText: currentText,
+              );
+            }
           } else {
             state = state.copyWith(generatingText: currentText);
           }
@@ -215,18 +221,20 @@ class ReviewNotifier extends StateNotifier<ReviewState> {
         }
 
         if (hadNewFinal) {
-          final prevLen = state.questions.length;
-          final wasWaiting = items.length > prevLen &&
-              prevLen == state.currentQuestionIndex + 1;
-          state = state.copyWith(
-            questions: List.from(items),
-            currentQuestionIndex: wasWaiting
-                ? state.currentQuestionIndex + 1
-                : state.currentQuestionIndex,
-            phase: wasWaiting || (state.phase == ReviewPhase.loading && items.isNotEmpty)
-                ? ReviewPhase.showingQuestions
-                : state.phase,
-          );
+          if (state.phase == ReviewPhase.loading && state.questions.isNotEmpty) {
+            state = state.copyWith(
+              questions: List.from(items),
+              currentQuestionIndex: state.currentQuestionIndex + 1,
+              phase: ReviewPhase.showingQuestions,
+            );
+          } else if (state.questions.isEmpty && items.isNotEmpty) {
+            state = state.copyWith(
+              questions: List.from(items),
+              phase: ReviewPhase.showingQuestions,
+            );
+          } else {
+            state = state.copyWith(questions: List.from(items));
+          }
         } else if (state.phase == ReviewPhase.loading && items.isNotEmpty) {
           state = state.copyWith(phase: ReviewPhase.showingQuestions);
         }
@@ -394,7 +402,8 @@ class ReviewNotifier extends StateNotifier<ReviewState> {
     await _saveNoteRecord(currentId);
 
     if (state.isLoading) {
-      // stay at current question; streaming loop will auto-advance
+      // mark waiting so streaming loop will auto-advance when next question arrives
+      state = state.copyWith(phase: ReviewPhase.loading);
       return;
     }
 

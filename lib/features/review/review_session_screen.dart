@@ -248,6 +248,21 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
                             .submitSelfScore(score);
                       },
                     ),
+                  if (state.phase == ReviewPhase.loading && state.questions.isNotEmpty) ...[
+                    const SizedBox(height: 48),
+                    Center(
+                      child: Column(
+                        children: [
+                          const CircularProgressIndicator(),
+                          const SizedBox(height: 16),
+                          Text('正在生成下一题...',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              )),
+                        ],
+                      ),
+                    ),
+                  ],
                   if (_showFollowUpChat) ...[
                     const Divider(height: 32),
                     Text('追问',
