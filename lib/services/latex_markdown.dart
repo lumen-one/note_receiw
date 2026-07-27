@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:markdown/markdown.dart' as md;
 
 class LaTeXMarkdown extends StatelessWidget {
   final String data;
@@ -18,13 +19,31 @@ class LaTeXMarkdown extends StatelessWidget {
   Widget build(BuildContext context) {
     final segments = _splitByBlockMath(data);
     if (segments.length == 1 && !segments[0].isMath) {
-      return MarkdownBody(data: data, styleSheet: styleSheet, selectable: selectable);
+      return MarkdownBody(
+        data: data,
+        styleSheet: styleSheet,
+        selectable: selectable,
+        builders: {'mathInline': _InlineMathBuilder()},
+        extensionSet: md.ExtensionSet(
+          md.ExtensionSet.gitHubFlavored.blockSyntaxes,
+          [_InlineMathSyntax(), ...md.ExtensionSet.gitHubFlavored.inlineSyntaxes],
+        ),
+      );
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: segments.map((seg) {
         if (seg.isMath) return _buildBlockMath(context, seg.content);
-        return MarkdownBody(data: seg.content, styleSheet: styleSheet, selectable: selectable);
+        return MarkdownBody(
+          data: seg.content,
+          styleSheet: styleSheet,
+          selectable: selectable,
+          builders: {'mathInline': _InlineMathBuilder()},
+          extensionSet: md.ExtensionSet(
+            md.ExtensionSet.gitHubFlavored.blockSyntaxes,
+            [_InlineMathSyntax(), ...md.ExtensionSet.gitHubFlavored.inlineSyntaxes],
+          ),
+        );
       }).toList(),
     );
   }
@@ -47,14 +66,56 @@ class LaTeXMarkdown extends StatelessWidget {
             body,
             mathStyle: MathStyle.display,
             textStyle: TextStyle(fontSize: 18, color: theme.textTheme.bodyLarge?.color),
-            onErrorFallback: (err) => Text(
-              body,
-              style: TextStyle(
-                fontFamily: 'monospace',
-                color: theme.colorScheme.error,
-                fontSize: 14,
-              ),
-            ),
+            onErrorFallback: (err) => _errorFallback(theme, body),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _errorFallback(ThemeData theme, String tex) {
+    return Text(
+      tex,
+      style: TextStyle(
+        fontFamily: 'monospace',
+        color: theme.colorScheme.error,
+        fontSize: 14,
+      ),
+    );
+  }
+}
+
+class _InlineMathSyntax extends md.InlineSyntax {
+  _InlineMathSyntax() : super(r'(?<!\$)\$(.+?)\$(?!\$)', startCharacter: 0x24);
+
+  @override
+  bool onMatch(md.InlineParser parser, Match match) {
+    parser.addNode(md.Element.text('mathInline', match[1] ?? ''));
+    return true;
+  }
+}
+
+class _InlineMathBuilder extends MarkdownElementBuilder {
+  @override
+  Widget? build(BuildContext context, md.Element element, List<Widget?> children) {
+    final latex = element.textContent;
+    if (latex.isEmpty) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      child: Math.tex(
+        latex,
+        mathStyle: MathStyle.text,
+        textStyle: TextStyle(
+          fontSize: theme.textTheme.bodyLarge?.fontSize ?? 16,
+          color: theme.textTheme.bodyLarge?.color,
+        ),
+        onErrorFallback: (err) => Text(
+          '\$$latex\$',
+          style: TextStyle(
+            fontFamily: 'monospace',
+            color: theme.colorScheme.error,
+            fontSize: 14,
           ),
         ),
       ),
