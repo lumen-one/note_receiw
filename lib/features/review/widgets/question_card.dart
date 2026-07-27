@@ -67,21 +67,23 @@ class QuestionCard extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(height: 16),
-        Card(
-          color: theme.colorScheme.secondaryContainer,
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('拓展知识', style: theme.textTheme.labelMedium),
-                const SizedBox(height: 8),
-                LaTeXMarkdown(data: expansion, styleSheet: mdStyleSmall, selectable: true),
-              ],
+        if (expansion.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Card(
+            color: theme.colorScheme.secondaryContainer,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('拓展知识', style: theme.textTheme.labelMedium),
+                  const SizedBox(height: 8),
+                  LaTeXMarkdown(data: expansion, styleSheet: mdStyleSmall, selectable: true),
+                ],
+              ),
             ),
           ),
-        ),
+        ],
         const SizedBox(height: 24),
         TextField(
           controller: answerController,
