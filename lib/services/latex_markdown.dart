@@ -17,67 +17,48 @@ class LaTeXMarkdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MarkdownBody(
-      data: data,
-      styleSheet: styleSheet,
-      selectable: selectable,
-      builders: {
-        'mathBlock': _MathBlockBuilder(),
-        'mathInline': _MathInlineBuilder(),
-      },
-      extensionSet: md.ExtensionSet(
-        md.ExtensionSet.gitHubFlavored.blockSyntaxes,
-        [
-          _BlockMathSyntax(),
-          _InlineMathSyntax(),
-          ...md.ExtensionSet.gitHubFlavored.inlineSyntaxes,
-        ],
-      ),
+    final segments = _splitByBlockMath(data);
+    if (segments.length == 1) {
+      return MarkdownBody(
+        data: _escapeInlineMathDollars(data),
+        styleSheet: styleSheet,
+        selectable: selectable,
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: segments.map((seg) {
+        if (seg.isMath) {
+          return _buildBlockMath(context, seg.content);
+        }
+        return MarkdownBody(
+          data: _escapeInlineMathDollars(seg.content),
+          styleSheet: styleSheet,
+          selectable: selectable,
+        );
+      }).toList(),
     );
   }
-}
 
-class _BlockMathSyntax extends md.InlineSyntax {
-  _BlockMathSyntax() : super(r'\$\$([\s\S]+?)\$\$', startCharacter: 0x24);
-
-  @override
-  bool onMatch(md.InlineParser parser, Match match) {
-    parser.addNode(md.Element.text('mathBlock', (match[1] ?? '').trim()));
-    return true;
-  }
-}
-
-class _InlineMathSyntax extends md.InlineSyntax {
-  _InlineMathSyntax() : super(r'(?<!\$)\$(.+?)\$(?!\$)', startCharacter: 0x24);
-
-  @override
-  bool onMatch(md.InlineParser parser, Match match) {
-    parser.addNode(md.Element.text('mathInline', match[1] ?? ''));
-    return true;
-  }
-}
-
-class _MathBlockBuilder extends MarkdownElementBuilder {
-  @override
-  Widget? build(BuildContext context, md.Element element, List<Widget?> children) {
-    final latex = element.textContent;
-    if (latex.isEmpty) return const SizedBox.shrink();
+  Widget _buildBlockMath(BuildContext context, String latex) {
+    final theme = Theme.of(context);
+    if (latex.trim().isEmpty) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Center(
         child: ClipRect(
-          child: SelectableMath.tex(
-            latex,
+          child: Math.tex(
+            latex.trim(),
             mathStyle: MathStyle.display,
             textStyle: TextStyle(
               fontSize: 18,
-              color: Theme.of(context).textTheme.bodyLarge?.color,
+              color: theme.textTheme.bodyLarge?.color,
             ),
             onErrorFallback: (err) => Text(
-              latex,
+              latex.trim(),
               style: TextStyle(
                 fontFamily: 'monospace',
-                color: Theme.of(context).colorScheme.error,
+                color: theme.colorScheme.error,
                 fontSize: 14,
               ),
             ),
@@ -88,29 +69,35 @@ class _MathBlockBuilder extends MarkdownElementBuilder {
   }
 }
 
-class _MathInlineBuilder extends MarkdownElementBuilder {
-  @override
-  Widget? build(BuildContext context, md.Element element, List<Widget?> children) {
-    final latex = element.textContent;
-    if (latex.isEmpty) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 2),
-      child: SelectableMath.tex(
-        latex,
-        mathStyle: MathStyle.text,
-        textStyle: TextStyle(
-          fontSize: Theme.of(context).textTheme.bodyLarge?.fontSize ?? 16,
-          color: Theme.of(context).textTheme.bodyLarge?.color,
-        ),
-        onErrorFallback: (err) => Text(
-          '\$$latex\$',
-          style: TextStyle(
-            fontFamily: 'monospace',
-            color: Theme.of(context).colorScheme.error,
-            fontSize: 14,
-          ),
-        ),
-      ),
-    );
+class _Segment {
+  final bool isMath;
+  final String content;
+  const _Segment({required this.isMath, required this.content});
+}
+
+List<_Segment> _splitByBlockMath(String text) {
+  final segments = <_Segment>[];
+  final regex = RegExp(r'\$\$([\s\S]+?)\$\$');
+  int lastEnd = 0;
+  for (final match in regex.allMatches(text)) {
+    if (match.start > lastEnd) {
+      segments.add(_Segment(isMath: false, content: text.substring(lastEnd, match.start)));
+    }
+    segments.add(_Segment(isMath: true, content: match.group(1)!));
+    lastEnd = match.end;
   }
+  if (lastEnd < text.length) {
+    segments.add(_Segment(isMath: false, content: text.substring(lastEnd)));
+  }
+  if (segments.isEmpty) {
+    segments.add(_Segment(isMath: false, content: text));
+  }
+  return segments;
+}
+
+String _escapeInlineMathDollars(String text) {
+  return text.replaceAllMapped(
+    RegExp(r'(?<!\$)\$(.+?)\$(?!\$)'),
+    (m) => '`\$${m.group(1)}\$`',
+  );
 }
