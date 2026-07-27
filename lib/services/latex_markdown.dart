@@ -17,24 +17,14 @@ class LaTeXMarkdown extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final segments = _splitByBlockMath(data);
-    if (segments.length == 1) {
-      return MarkdownBody(
-        data: _escapeInlineMathDollars(data),
-        styleSheet: styleSheet,
-        selectable: selectable,
-      );
+    if (segments.length == 1 && !segments[0].isMath) {
+      return MarkdownBody(data: data, styleSheet: styleSheet, selectable: selectable);
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: segments.map((seg) {
-        if (seg.isMath) {
-          return _buildBlockMath(context, seg.content);
-        }
-        return MarkdownBody(
-          data: _escapeInlineMathDollars(seg.content),
-          styleSheet: styleSheet,
-          selectable: selectable,
-        );
+        if (seg.isMath) return _buildBlockMath(context, seg.content);
+        return MarkdownBody(data: seg.content, styleSheet: styleSheet, selectable: selectable);
       }).toList(),
     );
   }
@@ -45,16 +35,26 @@ class LaTeXMarkdown extends StatelessWidget {
     if (body.isEmpty) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Math.tex(
-        body,
-        mathStyle: MathStyle.display,
-        textStyle: TextStyle(fontSize: 18, color: theme.textTheme.bodyLarge?.color),
-        onErrorFallback: (err) => Text(
-          body,
-          style: TextStyle(
-            fontFamily: 'monospace',
-            color: theme.colorScheme.error,
-            fontSize: 14,
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 40),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        padding: const EdgeInsets.all(8),
+        child: Center(
+          child: Math.tex(
+            body,
+            mathStyle: MathStyle.display,
+            textStyle: TextStyle(fontSize: 18, color: theme.textTheme.bodyLarge?.color),
+            onErrorFallback: (err) => Text(
+              body,
+              style: TextStyle(
+                fontFamily: 'monospace',
+                color: theme.colorScheme.error,
+                fontSize: 14,
+              ),
+            ),
           ),
         ),
       ),
@@ -69,6 +69,9 @@ class _Segment {
 }
 
 List<_Segment> _splitByBlockMath(String text) {
+  if (!text.contains('\$\$')) {
+    return [_Segment(isMath: false, content: text)];
+  }
   final segments = <_Segment>[];
   final regex = RegExp(r'\$\$([\s\S]+?)\$\$');
   int lastEnd = 0;
@@ -86,11 +89,4 @@ List<_Segment> _splitByBlockMath(String text) {
     segments.add(_Segment(isMath: false, content: text));
   }
   return segments;
-}
-
-String _escapeInlineMathDollars(String text) {
-  return text.replaceAllMapped(
-    RegExp(r'(?<!\$)\$(.+?)\$(?!\$)'),
-    (m) => '`\$${m.group(1)}\$`',
-  );
 }
