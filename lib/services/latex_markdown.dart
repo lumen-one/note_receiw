@@ -41,26 +41,20 @@ class LaTeXMarkdown extends StatelessWidget {
 
   Widget _buildBlockMath(BuildContext context, String latex) {
     final theme = Theme.of(context);
-    if (latex.trim().isEmpty) return const SizedBox.shrink();
+    final body = latex.trim();
+    if (body.isEmpty) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Center(
-        child: ClipRect(
-          child: Math.tex(
-            latex.trim(),
-            mathStyle: MathStyle.display,
-            textStyle: TextStyle(
-              fontSize: 18,
-              color: theme.textTheme.bodyLarge?.color,
-            ),
-            onErrorFallback: (err) => Text(
-              latex.trim(),
-              style: TextStyle(
-                fontFamily: 'monospace',
-                color: theme.colorScheme.error,
-                fontSize: 14,
-              ),
-            ),
+      child: Math.tex(
+        body,
+        mathStyle: MathStyle.display,
+        textStyle: TextStyle(fontSize: 18, color: theme.textTheme.bodyLarge?.color),
+        onErrorFallback: (err) => Text(
+          body,
+          style: TextStyle(
+            fontFamily: 'monospace',
+            color: theme.colorScheme.error,
+            fontSize: 14,
           ),
         ),
       ),

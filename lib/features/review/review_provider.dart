@@ -206,21 +206,38 @@ class ReviewNotifier extends StateNotifier<ReviewState> {
           if (single.question.isNotEmpty) finalParsed.add(single);
         }
 
-        bool hadNewFinal = false;
-        while (extractedCount < finalParsed.length) {
-          final q = finalParsed[extractedCount];
-          items.add(QuestionItem(
-            noteId: joined.note.id,
-            fileName: joined.note.fileName,
-            question: q.question,
-            expansion: q.expansion,
-            noteContent: noteContent,
-          ));
-          extractedCount++;
-          hadNewFinal = true;
+        // Update items with complete data from final parse
+        // (fixes empty expansion captured prematurely during streaming)
+        final noteStart = items.length - extractedCount;
+        bool hadUpdate = false;
+        for (int i = 0; i < finalParsed.length; i++) {
+          final q = finalParsed[i];
+          final idx = noteStart + i;
+          if (idx >= 0 && idx < items.length) {
+            if (items[idx].expansion.isEmpty && q.expansion.isNotEmpty) {
+              items[idx] = QuestionItem(
+                noteId: joined.note.id,
+                fileName: joined.note.fileName,
+                question: items[idx].question,
+                expansion: q.expansion,
+                noteContent: noteContent,
+              );
+              hadUpdate = true;
+            }
+          } else {
+            items.add(QuestionItem(
+              noteId: joined.note.id,
+              fileName: joined.note.fileName,
+              question: q.question,
+              expansion: q.expansion,
+              noteContent: noteContent,
+            ));
+            hadUpdate = true;
+          }
         }
+        extractedCount = finalParsed.length;
 
-        if (hadNewFinal) {
+        if (hadUpdate) {
           if (state.phase == ReviewPhase.loading && state.questions.isNotEmpty) {
             state = state.copyWith(
               questions: List.from(items),
