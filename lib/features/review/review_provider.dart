@@ -123,7 +123,6 @@ class ReviewNotifier extends StateNotifier<ReviewState> {
       final vaultPath = await _ref.read(vaultPathProvider.future);
 
       final overdue = await db.overdueNotes(DateTime.now());
-
       final questionsPerNote = await _ref.read(reviewCountProvider.future);
 
       final items = <QuestionItem>[];
@@ -133,7 +132,9 @@ class ReviewNotifier extends StateNotifier<ReviewState> {
         _noteScores[joined.note.id] = [];
 
         state = state.copyWith(
-          statusMessage: '正在为「${joined.note.fileName}」生成题目（${noteIdx + 1}/${overdue.length}）...',
+          statusMessage: items.isEmpty
+              ? '正在为「${joined.note.fileName}」生成题目（${noteIdx + 1}/${overdue.length}）...'
+              : '正在为「${joined.note.fileName}」生成更多题目...',
           generatingText: '',
         );
 
@@ -149,32 +150,59 @@ class ReviewNotifier extends StateNotifier<ReviewState> {
           'count': questionsPerNote.toString(),
         });
 
+        int extractedCount = 0;
         final responseBuffer = StringBuffer();
         await for (final token in aiService.chatStream(
           systemPrompt: '你是一位帮助我学习的挚友。',
           userMessage: prompt,
         )) {
           responseBuffer.write(token);
-          state = state.copyWith(generatingText: responseBuffer.toString());
-        }
+          final currentText = responseBuffer.toString();
+          final allParsed = parseMultipleQuestions(currentText);
 
-        final fullResponse = responseBuffer.toString();
-        final parsedList = parseMultipleQuestions(fullResponse);
+          bool hadNew = false;
+          while (extractedCount < allParsed.length) {
+            final q = allParsed[extractedCount];
+            items.add(QuestionItem(
+              noteId: joined.note.id,
+              fileName: joined.note.fileName,
+              question: q.question,
+              expansion: q.expansion,
+              noteContent: noteContent,
+            ));
+            extractedCount++;
+            hadNew = true;
+          }
 
-        if (parsedList.isEmpty) {
-          final single = parseSingleQuestion(fullResponse);
-          if (single.question.isNotEmpty) {
-            parsedList.add(single);
+          if (hadNew) {
+            final prevLen = state.questions.length;
+            final wasWaiting = items.length > prevLen &&
+                prevLen == state.currentQuestionIndex + 1;
+            state = state.copyWith(
+              questions: List.from(items),
+              generatingText: currentText,
+              currentQuestionIndex: wasWaiting
+                  ? state.currentQuestionIndex + 1
+                  : state.currentQuestionIndex,
+              phase: wasWaiting || (state.phase == ReviewPhase.loading && items.length == 1)
+                  ? ReviewPhase.showingQuestions
+                  : state.phase,
+            );
+          } else {
+            state = state.copyWith(generatingText: currentText);
           }
         }
 
-        final questions = parsedList.take(questionsPerNote).toList();
+        final fullResponse = responseBuffer.toString();
+        final finalParsed = parseMultipleQuestions(fullResponse);
+        if (finalParsed.isEmpty) {
+          final single = parseSingleQuestion(fullResponse);
+          if (single.question.isNotEmpty) finalParsed.add(single);
+        }
 
-        if (questions.isEmpty) continue;
-
-        final buffer = StringBuffer();
-        for (int i = 0; i < questions.length; i++) {
-          final q = questions[i];
+        bool hadNewFinal = false;
+        while (extractedCount < finalParsed.length) {
+          final q = finalParsed[extractedCount];
           items.add(QuestionItem(
             noteId: joined.note.id,
             fileName: joined.note.fileName,
@@ -182,22 +210,45 @@ class ReviewNotifier extends StateNotifier<ReviewState> {
             expansion: q.expansion,
             noteContent: noteContent,
           ));
-          buffer.writeln('【题目${i + 1}】\n${q.question}\n\n【拓展${i + 1}】\n${q.expansion}');
-          if (i < questions.length - 1) buffer.writeln();
+          extractedCount++;
+          hadNewFinal = true;
         }
 
+        if (hadNewFinal) {
+          final prevLen = state.questions.length;
+          final wasWaiting = items.length > prevLen &&
+              prevLen == state.currentQuestionIndex + 1;
+          state = state.copyWith(
+            questions: List.from(items),
+            currentQuestionIndex: wasWaiting
+                ? state.currentQuestionIndex + 1
+                : state.currentQuestionIndex,
+            phase: wasWaiting || (state.phase == ReviewPhase.loading && items.isNotEmpty)
+                ? ReviewPhase.showingQuestions
+                : state.phase,
+          );
+        } else if (state.phase == ReviewPhase.loading && items.isNotEmpty) {
+          state = state.copyWith(phase: ReviewPhase.showingQuestions);
+        }
+
+        final contentBuffer = StringBuffer();
+        for (int i = 0; i < finalParsed.length; i++) {
+          final q = finalParsed[i];
+          contentBuffer.writeln(
+              '【题目${i + 1}】\n${q.question}\n\n【拓展${i + 1}】\n${q.expansion}');
+          if (i < finalParsed.length - 1) contentBuffer.writeln();
+        }
         await db.insertChatMessage(
           sessionType: 'review_${joined.note.id}',
           noteId: joined.note.id,
           role: 'assistant',
-          content: buffer.toString(),
+          content: contentBuffer.toString(),
         );
       }
 
       state = state.copyWith(
-        questions: items,
-        currentQuestionIndex: 0,
-        phase: items.isEmpty ? ReviewPhase.complete : ReviewPhase.showingQuestions,
+        questions: List.from(items),
+        phase: items.isEmpty ? ReviewPhase.complete : state.phase,
         isLoading: false,
         statusMessage: null,
         generatingText: null,
@@ -337,11 +388,18 @@ class ReviewNotifier extends StateNotifier<ReviewState> {
         currentQuestionIndex: idx + 1,
         phase: ReviewPhase.showingQuestions,
       );
-    } else {
-      await _saveNoteRecord(currentId);
-      _ref.invalidate(overdueProvider);
-      state = state.copyWith(phase: ReviewPhase.complete);
+      return;
     }
+
+    await _saveNoteRecord(currentId);
+
+    if (state.isLoading) {
+      // stay at current question; streaming loop will auto-advance
+      return;
+    }
+
+    _ref.invalidate(overdueProvider);
+    state = state.copyWith(phase: ReviewPhase.complete);
   }
 
   void enterChatMode() {

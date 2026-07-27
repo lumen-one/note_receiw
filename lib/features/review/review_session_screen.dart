@@ -40,7 +40,7 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
     final state = ref.watch(reviewStateProvider);
     final theme = Theme.of(context);
 
-    if (state.isLoading) {
+    if (state.questions.isEmpty && state.isLoading) {
       return Scaffold(
         appBar: AppBar(title: const Text('正在生成题目...')),
         body: Column(
@@ -154,9 +154,36 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
       ),
       body: Column(
         children: [
-          LinearProgressIndicator(
-            value: (state.currentQuestionIndex + 1) / state.questions.length,
-          ),
+          if (state.isLoading)
+            const LinearProgressIndicator()
+          else
+            LinearProgressIndicator(
+              value: (state.currentQuestionIndex + 1) / state.questions.length,
+            ),
+          if (state.isLoading && state.questions.isNotEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              color: theme.colorScheme.tertiaryContainer,
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 14, height: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: theme.colorScheme.onTertiaryContainer,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    state.statusMessage ?? '正在生成更多题目...',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onTertiaryContainer,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           if (state.errorMessage != null)
             Container(
               width: double.infinity,
@@ -278,7 +305,9 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
                             state.currentQuestionIndex <
                                     state.questions.length - 1
                                 ? '下一题'
-                                : '完成复习',
+                                : state.isLoading
+                                    ? '等待生成中...'
+                                    : '完成复习',
                           ),
                         ),
                       ],
