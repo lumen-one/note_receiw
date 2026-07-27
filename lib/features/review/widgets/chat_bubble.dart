@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import '../../../services/latex_markdown.dart';
 
 class ChatBubble extends StatelessWidget {
   final String content;
@@ -35,7 +36,7 @@ class ChatBubble extends StatelessWidget {
               bottomRight: isUser ? Radius.zero : const Radius.circular(16),
             ),
           ),
-          child: MarkdownBody(
+          child: LaTeXMarkdown(
             data: content,
             styleSheet: MarkdownStyleSheet(
               p: theme.textTheme.bodyMedium,

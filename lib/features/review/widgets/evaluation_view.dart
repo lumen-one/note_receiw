@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import '../../../services/latex_markdown.dart';
 
 class EvaluationView extends StatelessWidget {
   final String evaluation;
@@ -63,13 +64,13 @@ class EvaluationView extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 8),
-                MarkdownBody(data: evaluation, styleSheet: mdStyle, selectable: true),
+                LaTeXMarkdown(data: evaluation, styleSheet: mdStyle, selectable: true),
                 if (extension != null && extension!.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   Text('延伸思考',
                       style: theme.textTheme.labelMedium),
                   const SizedBox(height: 4),
-                  MarkdownBody(data: extension!, styleSheet: mdStyle, selectable: true),
+                  LaTeXMarkdown(data: extension!, styleSheet: mdStyle, selectable: true),
                 ],
               ],
             ),

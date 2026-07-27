@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import '../../../services/latex_markdown.dart';
 
 class QuestionCard extends StatelessWidget {
   final String question;
@@ -61,7 +62,7 @@ class QuestionCard extends StatelessWidget {
               children: [
                 Text('题目', style: theme.textTheme.labelMedium),
                 const SizedBox(height: 8),
-                MarkdownBody(data: question, styleSheet: mdStyle, selectable: true),
+                LaTeXMarkdown(data: question, styleSheet: mdStyle, selectable: true),
               ],
             ),
           ),
@@ -76,7 +77,7 @@ class QuestionCard extends StatelessWidget {
               children: [
                 Text('拓展知识', style: theme.textTheme.labelMedium),
                 const SizedBox(height: 8),
-                MarkdownBody(data: expansion, styleSheet: mdStyleSmall, selectable: true),
+                LaTeXMarkdown(data: expansion, styleSheet: mdStyleSmall, selectable: true),
               ],
             ),
           ),
