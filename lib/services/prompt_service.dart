@@ -2,18 +2,23 @@ class PromptService {
   static const defaultGenerateQuestionPrompt = '''
 你是一位和我一起学习的挚友。请阅读以下笔记内容，帮我查漏补缺：
 
-1. 生成一道简答题，检验我对内容的理解
-2. 根据笔记内容，拓展一个相关知识或概念，帮我开阔思路
+1. 生成 {count} 道简答题，检验我对内容的理解
+2. 每道题后附上一个拓展知识或概念
 
 笔记内容：
 {note_content}
 
-请按以下格式回复：
-【题目】
-(题目内容)
+请按以下格式回复（共 {count} 组）：
+【题目1】
+(第1题)
+【拓展1】
+(拓展1)
 
-【拓展】
-(拓展知识点或概念)
+【题目2】
+(第2题)
+【拓展2】
+(拓展2)
+……
 ''';
 
   static const defaultEvaluateAnswerPrompt = '''
@@ -72,13 +77,32 @@ class ParsedQuestion {
   ParsedQuestion({required this.question, required this.expansion});
 }
 
-ParsedQuestion parseQuestionResponse(String response) {
+ParsedQuestion parseSingleQuestion(String response) {
   final questionMatch = RegExp(r'【题目】\s*([\s\S]*?)(?=【拓展】|$)').firstMatch(response);
   final expansionMatch = RegExp(r'【拓展】\s*([\s\S]*?)$').firstMatch(response);
   return ParsedQuestion(
     question: questionMatch?.group(1)?.trim() ?? '',
     expansion: expansionMatch?.group(1)?.trim() ?? '',
   );
+}
+
+List<ParsedQuestion> parseMultipleQuestions(String response) {
+  final questions = <ParsedQuestion>[];
+  final parts = response.split(RegExp(r'【题目\d*】'));
+  for (int i = 1; i < parts.length; i++) {
+    final part = parts[i].trim();
+    final expIdx = part.indexOf('【拓展');
+    if (expIdx >= 0) {
+      final question = part.substring(0, expIdx).trim();
+      final rest = part.substring(expIdx);
+      final expMatch = RegExp(r'【拓展\d*】\s*([\s\S]*?)$').firstMatch(rest);
+      final expansion = expMatch?.group(1)?.trim() ?? '';
+      if (question.isNotEmpty) {
+        questions.add(ParsedQuestion(question: question, expansion: expansion));
+      }
+    }
+  }
+  return questions;
 }
 
 ParsedResponse parseEvaluationResponse(String response) {

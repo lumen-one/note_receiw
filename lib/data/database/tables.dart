@@ -8,6 +8,7 @@ class NoteFiles extends Table {
       boolean().named('added_manually').withDefault(const Constant(false))();
   BoolColumn get hasReviewTag =>
       boolean().named('has_review_tag').withDefault(const Constant(false))();
+  TextColumn get tags => text().withDefault(const Constant(''))();
   BoolColumn get isActive =>
       boolean().named('is_active').withDefault(const Constant(true))();
   DateTimeColumn get createdAt =>

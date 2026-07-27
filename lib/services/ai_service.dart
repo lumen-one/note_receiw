@@ -1,5 +1,8 @@
+import 'dart:async';
+import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import '../data/settings_store.dart';
 
 class AIService {
   final Dio _dio;
@@ -21,6 +24,10 @@ class AIService {
     return key;
   }
 
+  Future<String> _getModelName() async {
+    return SettingsStore.getModelName();
+  }
+
   Future<String> chat({
     required String systemPrompt,
     required String userMessage,
@@ -37,10 +44,11 @@ class AIService {
     for (int attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         final apiKey = await _getApiKey();
+        final model = await _getModelName();
         final response = await _dio.post(
           '/chat/completions',
           data: {
-            'model': 'deepseek-v4-flash',
+            'model': model,
             'messages': messages,
             'temperature': 0.7,
             'max_tokens': 2048,
@@ -63,6 +71,62 @@ class AIService {
     throw Exception('AI 请求失败: ${lastError.toString()}');
   }
 
+  Stream<String> chatStream({
+    required String systemPrompt,
+    required String userMessage,
+    List<Map<String, String>> history = const [],
+  }) async* {
+    final messages = <Map<String, String>>[
+      {'role': 'system', 'content': systemPrompt},
+      ...history,
+      {'role': 'user', 'content': userMessage},
+    ];
+
+    final apiKey = await _getApiKey();
+    final model = await _getModelName();
+
+    final response = await _dio.post<ResponseBody>(
+      '/chat/completions',
+      data: {
+        'model': model,
+        'messages': messages,
+        'stream': true,
+        'temperature': 0.7,
+        'max_tokens': 2048,
+      },
+      options: Options(
+        headers: {'Authorization': 'Bearer $apiKey'},
+        responseType: ResponseType.stream,
+      ),
+    );
+
+    final body = response.data;
+    if (body == null) {
+      throw Exception('AI 返回为空');
+    }
+
+    await for (final line in body.stream
+        .cast<List<int>>()
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())) {
+      if (!line.startsWith('data: ')) continue;
+      final data = line.substring(6);
+      if (data == '[DONE]') break;
+      try {
+        final json = jsonDecode(data) as Map<String, dynamic>;
+        final choices = json['choices'] as List?;
+        if (choices == null || choices.isEmpty) continue;
+        final delta = (choices[0] as Map<String, dynamic>)['delta'] as Map<String, dynamic>?;
+        final content = delta?['content'] as String?;
+        if (content != null && content.isNotEmpty) {
+          yield content;
+        }
+      } catch (_) {
+        // skip malformed SSE lines
+      }
+    }
+  }
+
   Future<String> continueChat({
     required List<Map<String, String>> messages,
     int maxRetries = 2,
@@ -71,10 +135,11 @@ class AIService {
     for (int attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         final apiKey = await _getApiKey();
+        final model = await _getModelName();
         final response = await _dio.post(
           '/chat/completions',
           data: {
-            'model': 'deepseek-v4-flash',
+            'model': model,
             'messages': messages,
             'temperature': 0.7,
             'max_tokens': 2048,
@@ -95,5 +160,53 @@ class AIService {
       }
     }
     throw Exception('AI 请求失败: ${lastError.toString()}');
+  }
+
+  Stream<String> continueChatStream({
+    required List<Map<String, String>> messages,
+  }) async* {
+    final apiKey = await _getApiKey();
+    final model = await _getModelName();
+
+    final response = await _dio.post<ResponseBody>(
+      '/chat/completions',
+      data: {
+        'model': model,
+        'messages': messages,
+        'stream': true,
+        'temperature': 0.7,
+        'max_tokens': 2048,
+      },
+      options: Options(
+        headers: {'Authorization': 'Bearer $apiKey'},
+        responseType: ResponseType.stream,
+      ),
+    );
+
+    final body = response.data;
+    if (body == null) {
+      throw Exception('AI 返回为空');
+    }
+
+    await for (final line in body.stream
+        .cast<List<int>>()
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())) {
+      if (!line.startsWith('data: ')) continue;
+      final data = line.substring(6);
+      if (data == '[DONE]') break;
+      try {
+        final json = jsonDecode(data) as Map<String, dynamic>;
+        final choices = json['choices'] as List?;
+        if (choices == null || choices.isEmpty) continue;
+        final delta = (choices[0] as Map<String, dynamic>)['delta'] as Map<String, dynamic>?;
+        final content = delta?['content'] as String?;
+        if (content != null && content.isNotEmpty) {
+          yield content;
+        }
+      } catch (_) {
+        // skip malformed SSE lines
+      }
+    }
   }
 }

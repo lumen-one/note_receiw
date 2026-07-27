@@ -16,6 +16,7 @@ class SettingsScreen extends ConsumerStatefulWidget {
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   final _apiKeyController = TextEditingController();
+  final _modelController = TextEditingController();
   String? _vaultPath;
   int _reviewCount = 5;
   int _notifyHour = 20;
@@ -32,6 +33,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final storage = SecureStorageService();
     final key = await storage.getApiKey();
     _apiKeyController.text = key ?? '';
+
+    final model = await SettingsStore.getModelName();
+    _modelController.text = model;
 
     final vaultPath = await SettingsStore.getVaultPath();
     final reviewCount = await SettingsStore.getReviewCount();
@@ -50,6 +54,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   @override
   void dispose() {
     _apiKeyController.dispose();
+    _modelController.dispose();
     super.dispose();
   }
 
@@ -132,6 +137,47 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       }
                     },
                     child: const Text('保存 API Key'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _modelController,
+                    decoration: InputDecoration(
+                      labelText: '模型名称',
+                      hintText: 'deepseek-v4-flash',
+                      border: const OutlineInputBorder(),
+                      suffixIcon: PopupMenuButton<String>(
+                        icon: const Icon(Icons.dashboard),
+                        tooltip: '常用模型',
+                        onSelected: (value) {
+                          _modelController.text = value;
+                          SettingsStore.setModelName(value);
+                          ref.invalidate(modelNameProvider);
+                        },
+                        itemBuilder: (ctx) => [
+                          const PopupMenuItem(value: 'deepseek-v4-flash', child: Text('deepseek-v4-flash')),
+                          const PopupMenuItem(value: 'deepseek-pro', child: Text('deepseek-pro')),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: () async {
+                        final name = _modelController.text.trim();
+                        if (name.isNotEmpty) {
+                          await SettingsStore.setModelName(name);
+                          ref.invalidate(modelNameProvider);
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('模型已切换为 $name')),
+                            );
+                          }
+                        }
+                      },
+                      child: const Text('切换模型'),
+                    ),
                   ),
                 ],
               ),
@@ -260,7 +306,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               padding: const EdgeInsets.all(16),
               child: Row(
                 children: [
-                  const Text('每次复习题数'),
+                  const Text('每篇笔记出题数'),
                   const Spacer(),
                   IconButton(
                     onPressed: _reviewCount > 1

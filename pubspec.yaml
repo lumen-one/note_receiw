@@ -1,7 +1,7 @@
 name: phone_note_review
 description: AI-powered Obsidian note review app with spaced repetition.
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.1.0+1
 
 environment:
   sdk: ^3.6.0
@@ -29,6 +29,7 @@ dependencies:
   intl: ^0.19.0
   collection: ^1.18.0
   fl_chart: ^0.69.0
+  flutter_markdown: ^0.7.6
 
 dev_dependencies:
   flutter_test:

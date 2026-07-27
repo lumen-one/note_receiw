@@ -41,7 +41,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   @override
   void initState() {
     super.initState();
-    _loadNotes();
+    _loadNotes().then((_) => _loadExistingMessages());
     _controller.addListener(_onTextChanged);
   }
 
@@ -78,6 +78,26 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     } catch (e) {
       // Notes will be empty lists, chat still functional
     }
+  }
+
+  Future<void> _loadExistingMessages() async {
+    if (widget.sessionType == 'free_chat') return;
+    try {
+      final db = ref.read(databaseProvider);
+      final noteId = _mentionedNoteIds.isNotEmpty ? _mentionedNoteIds.first : null;
+      final messages = await db.messagesForSession(widget.sessionType, noteId: noteId);
+      setState(() {
+        _messages.addAll(messages.map((m) => {
+          'role': m.role,
+          'content': m.content,
+        }));
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+        }
+      });
+    } catch (_) {}
   }
 
   void _onTextChanged() {
@@ -174,6 +194,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _controller.clear();
 
     try {
+      final db = ref.read(databaseProvider);
+      await db.insertChatMessage(
+        sessionType: widget.sessionType,
+        role: 'user',
+        content: content,
+      );
+
       final aiService = ref.read(aiServiceProvider);
       final systemPrompt = await _buildContextPrompt();
       final fullMessages = [
@@ -181,30 +208,42 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         ..._messages,
       ];
 
-      final reply = await aiService.continueChat(messages: fullMessages);
+      final replyBuffer = StringBuffer();
       setState(() {
-        _messages.add({'role': 'assistant', 'content': reply});
+        _messages.add({'role': 'assistant', 'content': ''});
       });
+
+      await for (final token in aiService.continueChatStream(messages: fullMessages)) {
+        replyBuffer.write(token);
+        final idx = _messages.length - 1;
+        setState(() {
+          _messages[idx] = {'role': 'assistant', 'content': replyBuffer.toString()};
+        });
+        if (_scrollController.hasClients) {
+          _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+        }
+      }
+
+      final reply = replyBuffer.toString();
+      await db.insertChatMessage(
+        sessionType: widget.sessionType,
+        role: 'assistant',
+        content: reply,
+      );
     } catch (e) {
       setState(() {
-        _messages.add({
-          'role': 'assistant',
-          'content': '抱歉，请求失败：$e',
-        });
+        if (_messages.isNotEmpty && _messages.last['role'] == 'assistant') {
+          _messages.last['content'] = '抱歉，请求失败：$e';
+        } else {
+          _messages.add({
+            'role': 'assistant',
+            'content': '抱歉，请求失败：$e',
+          });
+        }
       });
     } finally {
       setState(() => _loading = false);
     }
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
-      }
-    });
   }
 
   Future<void> _endChat() async {
@@ -307,9 +346,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 : ListView.builder(
                     controller: _scrollController,
                     padding: const EdgeInsets.all(16),
-                    itemCount: _messages.length + (_loading ? 1 : 0),
+                    itemCount: _messages.length + (_loading && (_messages.isEmpty || _messages.last['role'] != 'assistant') ? 1 : 0),
                     itemBuilder: (context, index) {
-                      if (index == _messages.length && _loading) {
+                      if (index == _messages.length && _loading && (_messages.isEmpty || _messages.last['role'] != 'assistant')) {
                         return const Padding(
                           padding: EdgeInsets.all(8.0),
                           child: Align(

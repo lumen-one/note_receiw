@@ -67,6 +67,16 @@ class SettingsStore {
     await prefs.setString(_keyIntervals, jsonEncode(intervals));
   }
 
+  static Future<String> getModelName() async {
+    final prefs = await _prefs;
+    return prefs.getString('model_name') ?? 'deepseek-v4-flash';
+  }
+
+  static Future<void> setModelName(String name) async {
+    final prefs = await _prefs;
+    await prefs.setString('model_name', name);
+  }
+
   static Future<void> resetSm2Intervals() async {
     final prefs = await _prefs;
     await prefs.remove(_keyIntervals);

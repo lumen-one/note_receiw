@@ -1,10 +1,13 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:drift/drift.dart' hide Column;
 import '../../data/database/database.dart';
 import '../../services/vault_service.dart';
 import '../../services/permission_service.dart';
+import '../../services/yaml_parser.dart';
 import '../settings/settings_provider.dart';
 import '../home/home_provider.dart';
 import 'vault_provider.dart';
@@ -76,6 +79,7 @@ class _VaultBrowserScreenState extends ConsumerState<VaultBrowserScreen> {
           filePath: entry.relativePath,
           fileName: entry.name,
           hasReviewTag: true,
+          tags: jsonEncode(entry.tags),
         );
         final existing = await db.recordForNote(note.id);
         if (existing == null) {
@@ -104,12 +108,21 @@ class _VaultBrowserScreenState extends ConsumerState<VaultBrowserScreen> {
   Future<void> _toggle(String path, bool active) async {
     final db = ref.read(databaseProvider);
     final entry = _allEntries.firstWhere((e) => e.relativePath == path);
+    String tags = jsonEncode(entry.tags);
+    if (active) {
+      try {
+        final file = File(entry.absolutePath);
+        final content = await file.readAsString();
+        tags = jsonEncode(YamlParser.extractTagsFromMarkdown(content));
+      } catch (_) {}
+    }
     final note = await db.upsertNote(
       filePath: entry.relativePath,
       fileName: entry.name,
       addedManually: active,
       hasReviewTag: entry.hasReviewTag,
       isActive: active,
+      tags: tags,
     );
     if (active) {
       final existing = await db.recordForNote(note.id);

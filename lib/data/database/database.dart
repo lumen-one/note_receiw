@@ -9,9 +9,9 @@ part 'database.g.dart';
 
 class JoinedRecord {
   final NoteFile note;
-  final ReviewRecord record;
+  final ReviewRecord? record;
 
-  JoinedRecord({required this.note, required this.record});
+  JoinedRecord({required this.note, this.record});
 }
 
 class DailyReviewCount {
@@ -34,9 +34,9 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(QueryExecutor executor) : super(executor);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
-@override
+  @override
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (m) async {
           await m.createAll();
@@ -44,6 +44,11 @@ class AppDatabase extends _$AppDatabase {
             id: Value(1),
             lastCheckTime: DateTime.now(),
           ));
+        },
+        onUpgrade: (m, from, to) async {
+          if (from == 1) {
+            await m.addColumn(noteFiles, noteFiles.tags);
+          }
         },
       );
 
@@ -103,6 +108,7 @@ class AppDatabase extends _$AppDatabase {
     bool addedManually = false,
     bool hasReviewTag = false,
     bool isActive = true,
+    String tags = '',
   }) async {
     final existing = await noteByPath(filePath);
     if (existing != null) {
@@ -112,6 +118,7 @@ class AppDatabase extends _$AppDatabase {
           addedManually: Value(addedManually),
           hasReviewTag: Value(hasReviewTag),
           isActive: Value(isActive),
+          tags: Value(tags),
           updatedAt: Value(DateTime.now()),
         ),
       );
@@ -124,6 +131,7 @@ class AppDatabase extends _$AppDatabase {
         addedManually: Value(addedManually),
         hasReviewTag: Value(hasReviewTag),
         isActive: Value(isActive),
+        tags: Value(tags),
       ),
     );
   }
@@ -140,33 +148,56 @@ class AppDatabase extends _$AppDatabase {
       (select(reviewRecords)..where((t) => t.noteId.equals(noteId)))
           .getSingleOrNull();
 
-  Future<List<JoinedRecord>> overdueNotes(DateTime lastCheck, DateTime now) {
-    final query = select(reviewRecords).join([
-      innerJoin(noteFiles, noteFiles.id.equalsExp(reviewRecords.noteId)),
-    ]);
-    query.where(
-      reviewRecords.nextReviewDate.isBiggerThanValue(lastCheck) &
-          reviewRecords.nextReviewDate.isSmallerOrEqualValue(now) &
-          noteFiles.isActive.equals(true),
-    );
-    query.orderBy([OrderingTerm.asc(reviewRecords.nextReviewDate)]);
-    return query.map((row) => JoinedRecord(
-          note: row.readTable(noteFiles),
-          record: row.readTable(reviewRecords),
-        )).get();
+  Future<List<JoinedRecord>> overdueNotes(DateTime now) async {
+    final activeNotes = await allActiveNotes();
+    if (activeNotes.isEmpty) return [];
+
+    final activeIds = activeNotes.map((n) => n.id).toList();
+    final records = await (select(reviewRecords)
+      ..where((t) => t.noteId.isIn(activeIds)))
+      .get();
+
+    final recordMap = {for (final r in records) r.noteId: r};
+
+    final result = <JoinedRecord>[];
+    for (final note in activeNotes) {
+      final record = recordMap[note.id];
+      if (record == null || !record.nextReviewDate.isAfter(now)) {
+        result.add(JoinedRecord(note: note, record: record));
+      }
+    }
+
+    result.sort((a, b) {
+      final aDate = a.record?.nextReviewDate;
+      final bDate = b.record?.nextReviewDate;
+      if (aDate == null && bDate == null) return 0;
+      if (aDate == null) return -1;
+      if (bDate == null) return 1;
+      return aDate.compareTo(bDate);
+    });
+
+    return result;
   }
 
-  Future<int> overdueCount(DateTime lastCheck, DateTime now) {
-    final query = selectOnly(reviewRecords)
-      ..join([
-        innerJoin(noteFiles, noteFiles.id.equalsExp(reviewRecords.noteId)),
-      ])
-      ..where(
-        reviewRecords.nextReviewDate.isBiggerThanValue(lastCheck) &
-            reviewRecords.nextReviewDate.isSmallerOrEqualValue(now) &
-            noteFiles.isActive.equals(true),
-      );
-    return query.map((_) => 1).get().then((l) => l.length);
+  Future<int> overdueCount(DateTime now) async {
+    final activeNotes = await allActiveNotes();
+    if (activeNotes.isEmpty) return 0;
+
+    final activeIds = activeNotes.map((n) => n.id).toList();
+    final records = await (select(reviewRecords)
+      ..where((t) => t.noteId.isIn(activeIds)))
+      .get();
+
+    final recordMap = {for (final r in records) r.noteId: r};
+
+    int count = 0;
+    for (final note in activeNotes) {
+      final record = recordMap[note.id];
+      if (record == null || !record.nextReviewDate.isAfter(now)) {
+        count++;
+      }
+    }
+    return count;
   }
 
   Future<List<DailyReviewCount>> reviewHistoryLast30Days() async {
@@ -233,5 +264,24 @@ class AppDatabase extends _$AppDatabase {
     return (delete(chatMessages)
           ..where((t) => t.sessionType.equals(sessionType)))
         .go();
+  }
+
+  Future<void> clearMessagesForNote(int noteId) {
+    return (delete(chatMessages)
+          ..where((t) => t.noteId.equals(noteId)))
+        .go();
+  }
+
+  Future<List<ChatMessage>> allMessages() {
+    return (select(chatMessages)
+          ..orderBy([(t) => OrderingTerm.asc(t.createdAt)]))
+        .get();
+  }
+
+  Future<List<ChatMessage>> messagesForNote(int noteId) {
+    return (select(chatMessages)
+          ..where((t) => t.noteId.equals(noteId))
+          ..orderBy([(t) => OrderingTerm.asc(t.createdAt)]))
+        .get();
   }
 }

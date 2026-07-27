@@ -13,9 +13,8 @@ final checkOverdueOnResumeProvider = Provider<void Function()>((ref) {
 
 final overdueProvider = FutureProvider<OverdueInfo>((ref) async {
   final db = ref.read(databaseProvider);
-  final lastCheck = await db.getLastCheckTime();
   final now = DateTime.now();
-  final records = await db.overdueNotes(lastCheck, now);
+  final records = await db.overdueNotes(now);
   return OverdueInfo(count: records.length, records: records);
 });
 

@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 
 class EvaluationView extends StatelessWidget {
   final String evaluation;
   final int? suggestedScore;
   final String? extension;
   final ValueChanged<int>? onScore;
+  final int? selectedScore;
 
   const EvaluationView({
     super.key,
@@ -12,11 +15,28 @@ class EvaluationView extends StatelessWidget {
     this.suggestedScore,
     this.extension,
     this.onScore,
+    this.selectedScore,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final mdStyle = MarkdownStyleSheet(
+      p: theme.textTheme.bodyMedium,
+      code: TextStyle(
+        backgroundColor: theme.colorScheme.surfaceContainerHigh,
+        fontFamily: 'monospace',
+        fontSize: 13,
+      ),
+      codeblockDecoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      blockquoteDecoration: BoxDecoration(
+        border: Border(left: BorderSide(color: theme.colorScheme.primary, width: 3)),
+      ),
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -43,13 +63,13 @@ class EvaluationView extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 8),
-                Text(evaluation, style: theme.textTheme.bodyMedium),
+                MarkdownBody(data: evaluation, styleSheet: mdStyle, selectable: true),
                 if (extension != null && extension!.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   Text('延伸思考',
                       style: theme.textTheme.labelMedium),
                   const SizedBox(height: 4),
-                  Text(extension!, style: theme.textTheme.bodyMedium),
+                  MarkdownBody(data: extension!, styleSheet: mdStyle, selectable: true),
                 ],
               ],
             ),
@@ -62,7 +82,14 @@ class EvaluationView extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: List.generate(6, (i) {
-              return _ScoreButton(score: i, onTap: () => onScore!(i));
+              return _ScoreButton(
+                score: i,
+                isSelected: selectedScore == i,
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  onScore!(i);
+                },
+              );
             }),
           ),
         ],
@@ -73,9 +100,14 @@ class EvaluationView extends StatelessWidget {
 
 class _ScoreButton extends StatelessWidget {
   final int score;
+  final bool isSelected;
   final VoidCallback onTap;
 
-  const _ScoreButton({required this.score, required this.onTap});
+  const _ScoreButton({
+    required this.score,
+    required this.isSelected,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -87,20 +119,34 @@ class _ScoreButton extends StatelessWidget {
       Colors.lightGreen,
       Colors.green,
     ];
+    final color = colors[score];
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: colors[score].withAlpha(30),
+          color: isSelected ? color : color.withAlpha(30),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: colors[score]),
+          border: Border.all(
+            color: color,
+            width: isSelected ? 2.5 : 1,
+          ),
         ),
         child: Column(
           children: [
-            Text('$score', style: TextStyle(color: colors[score], fontWeight: FontWeight.bold, fontSize: 18)),
-            Text('分', style: TextStyle(color: colors[score], fontSize: 11)),
+            Text('$score',
+                style: TextStyle(
+                  color: isSelected ? Colors.white : color,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                )),
+            Text('分',
+                style: TextStyle(
+                  color: isSelected ? Colors.white : color,
+                  fontSize: 11,
+                )),
           ],
         ),
       ),

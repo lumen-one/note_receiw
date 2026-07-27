@@ -15,10 +15,9 @@ void callbackDispatcher() {
         final file = p.join(dbFolder.path, 'note_review.db');
         final db = AppDatabase.forTesting(NativeDatabase(File(file)));
 
-        final lastCheck = await db.getLastCheckTime();
         final now = DateTime.now();
 
-        final count = await db.overdueCount(lastCheck, now);
+        final count = await db.overdueCount(now);
 
         if (count > 0) {
           const androidDetails = AndroidNotificationDetails(

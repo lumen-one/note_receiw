@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../data/database/database.dart';
+import '../settings/settings_provider.dart';
 import 'review_provider.dart';
 import 'widgets/question_card.dart';
 import 'widgets/evaluation_view.dart';
@@ -41,7 +43,86 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
     if (state.isLoading) {
       return Scaffold(
         appBar: AppBar(title: const Text('正在生成题目...')),
-        body: const Center(child: CircularProgressIndicator()),
+        body: Column(
+          children: [
+            const LinearProgressIndicator(),
+            Expanded(
+              child: Center(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const CircularProgressIndicator(),
+                      if (state.statusMessage != null) ...[
+                        const SizedBox(height: 20),
+                        Text(
+                          state.statusMessage!,
+                          textAlign: TextAlign.center,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                      if (state.generatingText != null &&
+                          state.generatingText!.isNotEmpty) ...[
+                        const SizedBox(height: 20),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            state.generatingText!,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              fontFamily: 'monospace',
+                              height: 1.5,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (state.phase == ReviewPhase.error) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('复习')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.error_outline, size: 64, color: theme.colorScheme.error),
+                const SizedBox(height: 16),
+                Text('出错了', style: theme.textTheme.titleLarge),
+                const SizedBox(height: 8),
+                Text(
+                  state.errorMessage ?? '未知错误',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                FilledButton.icon(
+                  onPressed: () => ref.read(reviewStateProvider.notifier).loadQuestions(),
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('重试'),
+                ),
+              ],
+            ),
+          ),
+        ),
       );
     }
 
@@ -59,12 +140,49 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text('复习 - 第 $progress 题'),
+        actions: [
+          if (state.phase == ReviewPhase.showingQuestions ||
+              state.phase == ReviewPhase.answering)
+            TextButton.icon(
+              onPressed: () => ref
+                  .read(reviewStateProvider.notifier)
+                  .skipToScoring(),
+              icon: const Icon(Icons.skip_next, size: 18),
+              label: const Text('跳过'),
+            ),
+        ],
       ),
       body: Column(
         children: [
           LinearProgressIndicator(
             value: (state.currentQuestionIndex + 1) / state.questions.length,
           ),
+          if (state.errorMessage != null)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              color: theme.colorScheme.errorContainer,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      state.errorMessage!,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onErrorContainer,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.close, size: 16,
+                        color: theme.colorScheme.onErrorContainer),
+                    onPressed: () => ref.read(reviewStateProvider.notifier).loadQuestions(),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    tooltip: '重试',
+                  ),
+                ],
+              ),
+            ),
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(16),
@@ -96,6 +214,7 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
                       evaluation: question.evaluation!,
                       suggestedScore: question.suggestedScore,
                       extension: question.extension,
+                      selectedScore: question.selfScore,
                       onScore: (score) {
                         ref
                             .read(reviewStateProvider.notifier)
@@ -203,6 +322,14 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
 
     final stateNow = ref.read(reviewStateProvider);
     final item = stateNow.questions[stateNow.currentQuestionIndex];
+    final db = ref.read(databaseProvider);
+
+    await db.insertChatMessage(
+      sessionType: 'review_${item.noteId}',
+      noteId: item.noteId,
+      role: 'user',
+      content: content,
+    );
 
     final messages = <Map<String, String>>[
       {
@@ -211,7 +338,7 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
       },
       {
         'role': 'assistant',
-        'content': '题目：${item.question}\n\n评价：${item.evaluation ?? ""}',
+        'content': '题目：${item.question}\n\n评价：${item.evaluation ?? ""}\n\n延伸思考：${item.extension ?? ""}',
       },
       {'role': 'user', 'content': '我的回答：${item.userAnswer ?? ""}'},
       ..._followUpMessages,
@@ -222,6 +349,12 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
       setState(() {
         _followUpMessages.add({'role': 'assistant', 'content': reply});
       });
+      await db.insertChatMessage(
+        sessionType: 'review_${item.noteId}',
+        noteId: item.noteId,
+        role: 'assistant',
+        content: reply,
+      );
     } catch (e) {
       setState(() {
         _followUpMessages.add({

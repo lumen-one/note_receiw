@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -8,6 +9,7 @@ import 'features/settings/settings_screen.dart';
 import 'features/vault/vault_browser_screen.dart';
 import 'features/review/review_session_screen.dart';
 import 'features/review/chat_screen.dart';
+import 'features/notes/monitored_notes_screen.dart';
 import 'features/home/home_provider.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -50,11 +52,17 @@ final router = GoRouter(
       parentNavigatorKey: _rootNavigatorKey,
       builder: (context, state) {
         final notes = state.uri.queryParameters['notes'];
+        final session = state.uri.queryParameters['session'] ?? 'free_chat';
         return ChatScreen(
-          sessionType: 'free_chat',
+          sessionType: session,
           initialNoteIds: notes,
         );
       },
+    ),
+    GoRoute(
+      path: '/notes',
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const MonitoredNotesScreen(),
     ),
   ],
 );
@@ -84,6 +92,8 @@ class AppShell extends ConsumerStatefulWidget {
 }
 
 class _AppShellState extends ConsumerState<AppShell> with WidgetsBindingObserver {
+  Timer? _refreshTimer;
+
   @override
   void initState() {
     super.initState();
@@ -91,10 +101,14 @@ class _AppShellState extends ConsumerState<AppShell> with WidgetsBindingObserver
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(checkOverdueOnResumeProvider)();
     });
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      ref.invalidate(overdueProvider);
+    });
   }
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -123,6 +137,9 @@ class _AppShellState extends ConsumerState<AppShell> with WidgetsBindingObserver
       bottomNavigationBar: NavigationBar(
         selectedIndex: currentIndex,
         onDestinationSelected: (index) {
+          if (index == 0) {
+            ref.invalidate(overdueProvider);
+          }
           switch (index) {
             case 0:
               context.go('/');

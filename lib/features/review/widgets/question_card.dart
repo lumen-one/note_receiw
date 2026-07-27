@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 
 class QuestionCard extends StatelessWidget {
   final String question;
@@ -17,6 +18,37 @@ class QuestionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final mdStyle = MarkdownStyleSheet(
+      p: theme.textTheme.bodyLarge,
+      code: TextStyle(
+        backgroundColor: theme.colorScheme.surfaceContainerHigh,
+        fontFamily: 'monospace',
+        fontSize: 13,
+      ),
+      codeblockDecoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      blockquoteDecoration: BoxDecoration(
+        border: Border(left: BorderSide(color: theme.colorScheme.primary, width: 3)),
+      ),
+    );
+    final mdStyleSmall = MarkdownStyleSheet(
+      p: theme.textTheme.bodyMedium,
+      code: TextStyle(
+        backgroundColor: theme.colorScheme.surfaceContainerHigh,
+        fontFamily: 'monospace',
+        fontSize: 13,
+      ),
+      codeblockDecoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      blockquoteDecoration: BoxDecoration(
+        border: Border(left: BorderSide(color: theme.colorScheme.primary, width: 3)),
+      ),
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -29,7 +61,7 @@ class QuestionCard extends StatelessWidget {
               children: [
                 Text('题目', style: theme.textTheme.labelMedium),
                 const SizedBox(height: 8),
-                Text(question, style: theme.textTheme.bodyLarge),
+                MarkdownBody(data: question, styleSheet: mdStyle, selectable: true),
               ],
             ),
           ),
@@ -44,7 +76,7 @@ class QuestionCard extends StatelessWidget {
               children: [
                 Text('拓展知识', style: theme.textTheme.labelMedium),
                 const SizedBox(height: 8),
-                Text(expansion, style: theme.textTheme.bodyMedium),
+                MarkdownBody(data: expansion, styleSheet: mdStyleSmall, selectable: true),
               ],
             ),
           ),

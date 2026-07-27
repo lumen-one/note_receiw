@@ -7,6 +7,7 @@ import '../../services/sm2_engine.dart';
 import '../../services/ai_service.dart';
 import '../../services/prompt_service.dart';
 import '../settings/settings_provider.dart';
+import '../home/home_provider.dart';
 
 class QuestionItem {
   final int noteId;
@@ -55,19 +56,25 @@ class QuestionItem {
   }
 }
 
-enum ReviewPhase { loading, showingQuestions, answering, evaluating, chatting, complete }
+enum ReviewPhase { loading, showingQuestions, answering, evaluating, chatting, complete, error }
 
 class ReviewState {
   final ReviewPhase phase;
   final List<QuestionItem> questions;
   final int currentQuestionIndex;
   final bool isLoading;
+  final String? statusMessage;
+  final String? errorMessage;
+  final String? generatingText;
 
   ReviewState({
     this.phase = ReviewPhase.loading,
     this.questions = const [],
     this.currentQuestionIndex = 0,
     this.isLoading = false,
+    this.statusMessage,
+    this.errorMessage,
+    this.generatingText,
   });
 
   ReviewState copyWith({
@@ -75,12 +82,18 @@ class ReviewState {
     List<QuestionItem>? questions,
     int? currentQuestionIndex,
     bool? isLoading,
+    String? statusMessage,
+    String? errorMessage,
+    String? generatingText,
   }) {
     return ReviewState(
       phase: phase ?? this.phase,
       questions: questions ?? this.questions,
       currentQuestionIndex: currentQuestionIndex ?? this.currentQuestionIndex,
       isLoading: isLoading ?? this.isLoading,
+      statusMessage: statusMessage ?? this.statusMessage,
+      errorMessage: errorMessage ?? this.errorMessage,
+      generatingText: generatingText ?? this.generatingText,
     );
   }
 }
@@ -93,57 +106,111 @@ final reviewStateProvider = StateNotifierProvider<ReviewNotifier, ReviewState>(
 
 class ReviewNotifier extends StateNotifier<ReviewState> {
   final Ref _ref;
+  final Map<int, List<int>> _noteScores = {};
+  final Map<int, ReviewRecord?> _originalRecords = {};
 
   ReviewNotifier(this._ref) : super(ReviewState());
 
   Future<void> loadQuestions() async {
-    state = state.copyWith(isLoading: true, phase: ReviewPhase.loading);
+    state = state.copyWith(isLoading: true, phase: ReviewPhase.loading, errorMessage: null);
+    _noteScores.clear();
+    _originalRecords.clear();
 
-    final db = _ref.read(databaseProvider);
-    final aiService = _ref.read(aiServiceProvider);
-    final generatePrompt = await _ref.read(generatePromptProvider.future);
-    final vaultPath = await _ref.read(vaultPathProvider.future);
+    try {
+      final db = _ref.read(databaseProvider);
+      final aiService = _ref.read(aiServiceProvider);
+      final generatePrompt = await _ref.read(generatePromptProvider.future);
+      final vaultPath = await _ref.read(vaultPathProvider.future);
 
-    final lastCheck = await db.getLastCheckTime();
-    final overdue = await db.overdueNotes(lastCheck, DateTime.now());
+      final overdue = await db.overdueNotes(DateTime.now());
 
-    final count = _ref.read(reviewCountProvider).valueOrNull ?? 5;
-    final selected = overdue.take(count).toList();
+      final questionsPerNote = await _ref.read(reviewCountProvider.future);
 
-    final items = <QuestionItem>[];
-    for (final joined in selected) {
-      final filePath = vaultPath != null ? '$vaultPath/${joined.note.filePath}' : '';
-      final file = File(filePath);
-      String noteContent = '';
-      if (await file.exists()) {
-        noteContent = await file.readAsString();
+      final items = <QuestionItem>[];
+      for (int noteIdx = 0; noteIdx < overdue.length; noteIdx++) {
+        final joined = overdue[noteIdx];
+        _originalRecords[joined.note.id] = joined.record;
+        _noteScores[joined.note.id] = [];
+
+        state = state.copyWith(
+          statusMessage: '正在为「${joined.note.fileName}」生成题目（${noteIdx + 1}/${overdue.length}）...',
+          generatingText: '',
+        );
+
+        final filePath = vaultPath != null ? '$vaultPath/${joined.note.filePath}' : '';
+        final file = File(filePath);
+        String noteContent = '';
+        if (await file.exists()) {
+          noteContent = await file.readAsString();
+        }
+
+        final prompt = PromptService.render(generatePrompt, {
+          'note_content': noteContent,
+          'count': questionsPerNote.toString(),
+        });
+
+        final responseBuffer = StringBuffer();
+        await for (final token in aiService.chatStream(
+          systemPrompt: '你是一位帮助我学习的挚友。',
+          userMessage: prompt,
+        )) {
+          responseBuffer.write(token);
+          state = state.copyWith(generatingText: responseBuffer.toString());
+        }
+
+        final fullResponse = responseBuffer.toString();
+        final parsedList = parseMultipleQuestions(fullResponse);
+
+        if (parsedList.isEmpty) {
+          final single = parseSingleQuestion(fullResponse);
+          if (single.question.isNotEmpty) {
+            parsedList.add(single);
+          }
+        }
+
+        final questions = parsedList.take(questionsPerNote).toList();
+
+        if (questions.isEmpty) continue;
+
+        final buffer = StringBuffer();
+        for (int i = 0; i < questions.length; i++) {
+          final q = questions[i];
+          items.add(QuestionItem(
+            noteId: joined.note.id,
+            fileName: joined.note.fileName,
+            question: q.question,
+            expansion: q.expansion,
+            noteContent: noteContent,
+          ));
+          buffer.writeln('【题目${i + 1}】\n${q.question}\n\n【拓展${i + 1}】\n${q.expansion}');
+          if (i < questions.length - 1) buffer.writeln();
+        }
+
+        await db.insertChatMessage(
+          sessionType: 'review_${joined.note.id}',
+          noteId: joined.note.id,
+          role: 'assistant',
+          content: buffer.toString(),
+        );
       }
 
-      final prompt = PromptService.render(generatePrompt, {
-        'note_content': noteContent,
-      });
-
-      final response = await aiService.chat(
-        systemPrompt: '你是一位帮助我学习的挚友。',
-        userMessage: prompt,
+      state = state.copyWith(
+        questions: items,
+        currentQuestionIndex: 0,
+        phase: items.isEmpty ? ReviewPhase.complete : ReviewPhase.showingQuestions,
+        isLoading: false,
+        statusMessage: null,
+        generatingText: null,
       );
-
-      final parsed = parseQuestionResponse(response);
-      items.add(QuestionItem(
-        noteId: joined.note.id,
-        fileName: joined.note.fileName,
-        question: parsed.question,
-        expansion: parsed.expansion,
-        noteContent: noteContent,
-      ));
+    } catch (e) {
+      state = state.copyWith(
+        phase: ReviewPhase.error,
+        isLoading: false,
+        errorMessage: '生成题目失败: ${e.toString().replaceAll(RegExp(r'Exception: '), '')}',
+        statusMessage: null,
+        generatingText: null,
+      );
     }
-
-    state = state.copyWith(
-      questions: items,
-      currentQuestionIndex: 0,
-      phase: items.isEmpty ? ReviewPhase.complete : ReviewPhase.showingQuestions,
-      isLoading: false,
-    );
   }
 
   Future<void> submitAnswer(String answer) async {
@@ -151,51 +218,95 @@ class ReviewNotifier extends StateNotifier<ReviewState> {
     final item = state.questions[idx].copyWith(userAnswer: answer);
     final newQuestions = List<QuestionItem>.from(state.questions);
     newQuestions[idx] = item;
-    state = state.copyWith(questions: newQuestions, isLoading: true);
+    state = state.copyWith(questions: newQuestions, isLoading: true, errorMessage: null);
 
-    final aiService = _ref.read(aiServiceProvider);
-    final evaluatePrompt = await _ref.read(evaluatePromptProvider.future);
-    final noteContent = item.noteContent;
+    try {
+      final db = _ref.read(databaseProvider);
+      final aiService = _ref.read(aiServiceProvider);
+      final evaluatePrompt = await _ref.read(evaluatePromptProvider.future);
+      final noteContent = item.noteContent;
 
-    final prompt = PromptService.render(evaluatePrompt, {
-      'note_content': noteContent,
-      'question': item.question,
-      'user_answer': answer,
-    });
+      await db.insertChatMessage(
+        sessionType: 'review_${item.noteId}',
+        noteId: item.noteId,
+        role: 'user',
+        content: answer,
+      );
 
-    final response = await aiService.chat(
-      systemPrompt: '你是一位帮助我学习的挚友。',
-      userMessage: prompt,
+      final prompt = PromptService.render(evaluatePrompt, {
+        'note_content': noteContent,
+        'question': item.question,
+        'user_answer': answer,
+      });
+
+      final response = await aiService.chat(
+        systemPrompt: '你是一位帮助我学习的挚友。',
+        userMessage: prompt,
+      );
+
+      final parsed = parseEvaluationResponse(response);
+      final updated = item.copyWith(
+        evaluation: parsed.evaluation,
+        suggestedScore: parsed.suggestedScore,
+        extension: parsed.extension,
+      );
+      final newQuestions2 = List<QuestionItem>.from(state.questions);
+      newQuestions2[idx] = updated;
+      state = state.copyWith(
+        questions: newQuestions2,
+        phase: ReviewPhase.evaluating,
+        isLoading: false,
+      );
+
+      await db.insertChatMessage(
+        sessionType: 'review_${item.noteId}',
+        noteId: item.noteId,
+        role: 'assistant',
+        content: '【评价】\n${parsed.evaluation}\n\n【建议评分】\n${parsed.suggestedScore}\n\n【延伸】\n${parsed.extension ?? ""}',
+      );
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: '评价失败: ${e.toString().replaceAll(RegExp(r'Exception: '), '')}',
+      );
+    }
+  }
+
+  void skipToScoring() {
+    final idx = state.currentQuestionIndex;
+    final item = state.questions[idx].copyWith(
+      userAnswer: '(跳过作答)',
+      evaluation: '已跳过',
     );
-
-    final parsed = parseEvaluationResponse(response);
-    final updated = item.copyWith(
-      evaluation: parsed.evaluation,
-      suggestedScore: parsed.suggestedScore,
-      extension: parsed.extension,
-    );
-    final newQuestions2 = List<QuestionItem>.from(state.questions);
-    newQuestions2[idx] = updated;
+    final newQuestions = List<QuestionItem>.from(state.questions);
+    newQuestions[idx] = item;
     state = state.copyWith(
-      questions: newQuestions2,
+      questions: newQuestions,
       phase: ReviewPhase.evaluating,
-      isLoading: false,
     );
   }
 
-  Future<void> submitSelfScore(int score) async {
+  void submitSelfScore(int score) {
     final idx = state.currentQuestionIndex;
     final item = state.questions[idx].copyWith(selfScore: score);
+    _noteScores[item.noteId]?.add(score);
     final newQuestions = List<QuestionItem>.from(state.questions);
     newQuestions[idx] = item;
     state = state.copyWith(questions: newQuestions);
+  }
 
+  Future<void> _saveNoteRecord(int noteId) async {
+    final scores = _noteScores[noteId];
+    if (scores == null || scores.isEmpty) return;
+
+    final avgScore = (scores.reduce((a, b) => a + b) / scores.length).round();
+    final clampedScore = avgScore.clamp(0, 5);
     final db = _ref.read(databaseProvider);
-    final existing = await db.recordForNote(item.noteId);
+    final existing = _originalRecords[noteId];
     final customIntervals = await SettingsStore.getSm2Intervals();
 
     final result = Sm2Engine.calculate(
-      quality: score,
+      quality: clampedScore,
       currentInterval: existing?.sm2Interval ?? 1.0,
       currentEaseFactor: existing?.sm2EaseFactor ?? 2.5,
       currentRepetitions: existing?.sm2Repetitions ?? 0,
@@ -203,23 +314,32 @@ class ReviewNotifier extends StateNotifier<ReviewState> {
     );
 
     await db.upsertRecord(ReviewRecordsCompanion.insert(
-      noteId: Value(item.noteId),
+      noteId: Value(noteId),
       sm2Interval: Value(result.interval),
       sm2EaseFactor: Value(result.easeFactor),
       sm2Repetitions: Value(result.repetitions),
       nextReviewDate: result.nextReviewDate,
       lastReviewDate: Value(DateTime.now()),
-      lastScore: Value(score),
+      lastScore: Value(clampedScore),
     ));
   }
 
-  void nextQuestion() {
+  Future<void> nextQuestion() async {
+    final idx = state.currentQuestionIndex;
+    final currentId = state.questions[idx].noteId;
+
     if (state.currentQuestionIndex < state.questions.length - 1) {
+      final nextId = state.questions[idx + 1].noteId;
+      if (currentId != nextId) {
+        await _saveNoteRecord(currentId);
+      }
       state = state.copyWith(
-        currentQuestionIndex: state.currentQuestionIndex + 1,
+        currentQuestionIndex: idx + 1,
         phase: ReviewPhase.showingQuestions,
       );
     } else {
+      await _saveNoteRecord(currentId);
+      _ref.invalidate(overdueProvider);
       state = state.copyWith(phase: ReviewPhase.complete);
     }
   }
@@ -229,6 +349,8 @@ class ReviewNotifier extends StateNotifier<ReviewState> {
   }
 
   void reset() {
+    _noteScores.clear();
+    _originalRecords.clear();
     state = ReviewState();
   }
 }

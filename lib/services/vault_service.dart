@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'dart:io';
+import 'yaml_parser.dart';
 
 class VaultEntry {
   final String name;
@@ -6,6 +8,7 @@ class VaultEntry {
   final String absolutePath;
   final bool isDirectory;
   final bool hasReviewTag;
+  final List<String> tags;
 
   VaultEntry({
     required this.name,
@@ -13,6 +16,7 @@ class VaultEntry {
     required this.absolutePath,
     required this.isDirectory,
     required this.hasReviewTag,
+    this.tags = const [],
   });
 }
 
@@ -22,6 +26,7 @@ class VaultTreeNode {
   final String absolutePath;
   final bool isDirectory;
   final bool hasReviewTag;
+  final List<String> tags;
   final List<VaultTreeNode> children;
   final int fileCount;
 
@@ -31,6 +36,7 @@ class VaultTreeNode {
     required this.absolutePath,
     required this.isDirectory,
     this.hasReviewTag = false,
+    this.tags = const [],
     this.children = const [],
     this.fileCount = 0,
   });
@@ -68,13 +74,14 @@ class VaultService {
         children.add(child);
       } else if (entity is File && entity.path.endsWith('.md')) {
         bool hasReviewTag = false;
+        List<String> tags = [];
         try {
-          final lines = await entity
-              .readAsLines()
-              .then((l) => l.take(30).toList());
+          final content = await entity.readAsString();
+          final lines = content.split('\n').take(30).toList();
           hasReviewTag = lines.any((line) => line.contains('#review'));
+          tags = YamlParser.extractTagsFromMarkdown(content);
         } catch (_) {
-          // If file can't be read, skip review tag detection
+          // If file can't be read, skip detection
         }
         final fileRelative = entity.path.substring(rootPath.length + 1);
         children.add(VaultTreeNode(
@@ -83,6 +90,7 @@ class VaultService {
           absolutePath: entity.path,
           isDirectory: false,
           hasReviewTag: hasReviewTag,
+          tags: tags,
         ));
         fileCount++;
       }
@@ -118,6 +126,7 @@ class VaultService {
         absolutePath: node.absolutePath,
         isDirectory: false,
         hasReviewTag: node.hasReviewTag,
+        tags: node.tags,
       ));
     }
     for (final child in node.children) {
