@@ -36,7 +36,7 @@ flutter build apk --release --android-skip-build-dependency-validation
 
 ## 测试
 ```bash
-flutter test --no-pub     # 24 个用例：sm2_engine / prompt_service
+flutter test --no-pub     # 24 个用例：sm2_engine / prompt_service / widget 冒烟
 ```
 - 若本机设了 `http_proxy`，flutter_tester 连不上本地 socket，需先 `unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY`
 
