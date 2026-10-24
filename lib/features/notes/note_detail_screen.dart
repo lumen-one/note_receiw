@@ -120,8 +120,9 @@ class NoteDetailScreen extends ConsumerWidget {
                         ],
                       ),
                     );
-                    if (confirmed == true && context.mounted) {
+                    if (confirmed == true) {
                       await db.clearMessagesForNote(noteId);
+                      if (!context.mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('聊天记录已清除')),
                       );
@@ -239,7 +240,7 @@ class NoteDetailScreen extends ConsumerWidget {
                       context.push('/review/chat?notes=$noteId&session=review_$noteId');
                     },
                     icon: const Icon(Icons.chat, size: 16),
-                    label: Text('继续对话', style: const TextStyle(fontSize: 13)),
+                    label: const Text('继续对话', style: TextStyle(fontSize: 13)),
                   ),
                 ],
               ),

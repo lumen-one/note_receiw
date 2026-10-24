@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import '../../../data/database/database.dart';
 
 void showOverdueNotesDialog(BuildContext context, List<JoinedRecord> records) {

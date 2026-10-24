@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class SettingsStore {
   static const _keyVaultPath = 'vault_path';
   static const _keyReviewCount = 'review_count';
+  static const _keySessionNoteLimit = 'session_note_limit';
   static const _keyIntervals = 'sm2_intervals';
   static const _keyNotifyHour = 'notify_hour';
   static const _keyNotifyMinute = 'notify_minute';
@@ -29,6 +30,16 @@ class SettingsStore {
   static Future<void> setReviewCount(int count) async {
     final prefs = await _prefs;
     await prefs.setInt(_keyReviewCount, count);
+  }
+
+  static Future<int> getSessionNoteLimit() async {
+    final prefs = await _prefs;
+    return prefs.getInt(_keySessionNoteLimit) ?? 3;
+  }
+
+  static Future<void> setSessionNoteLimit(int limit) async {
+    final prefs = await _prefs;
+    await prefs.setInt(_keySessionNoteLimit, limit);
   }
 
   static Future<int> getNotifyHour() async {

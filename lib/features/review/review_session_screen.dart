@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../data/database/database.dart';
+import '../../services/ai_service.dart';
 import '../settings/settings_provider.dart';
 import 'review_provider.dart';
 import 'widgets/question_card.dart';
@@ -20,17 +20,22 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
   final _answerController = TextEditingController();
   bool _showFollowUpChat = false;
   List<Map<String, String>> _followUpMessages = [];
+  ReviewNotifier? _notifier;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(reviewStateProvider.notifier).loadQuestions();
+      if (!mounted) return;
+      _notifier = ref.read(reviewStateProvider.notifier);
+      _notifier!.loadQuestions();
     });
   }
 
   @override
   void dispose() {
+    // 离开页面就中断后台流，避免生成还在往已卸载的状态里写
+    _notifier?.stopGeneration();
     _answerController.dispose();
     super.dispose();
   }
@@ -202,12 +207,27 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
                   IconButton(
                     icon: Icon(Icons.close, size: 16,
                         color: theme.colorScheme.onErrorContainer),
-                    onPressed: () => ref.read(reviewStateProvider.notifier).loadQuestions(),
+                    onPressed: () =>
+                        ref.read(reviewStateProvider.notifier).clearError(),
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
-                    tooltip: '重试',
+                    tooltip: '关闭提示',
                   ),
                 ],
+              ),
+            ),
+          if (state.phase != ReviewPhase.complete && state.warnings.isNotEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              color: theme.colorScheme.surfaceContainerHighest,
+              child: Text(
+                state.warnings.last,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
           Expanded(
@@ -336,12 +356,48 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
                               size: 64, color: theme.colorScheme.primary),
                           const SizedBox(height: 16),
                           Text('复习完成！', style: theme.textTheme.headlineSmall),
+                          if (state.remainingNoteCount > 0) ...[
+                            const SizedBox(height: 12),
+                            Text(
+                              '还有 ${state.remainingNoteCount} 篇逾期笔记，留到下一次',
+                              textAlign: TextAlign.center,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
                           const SizedBox(height: 24),
                           FilledButton.icon(
                             onPressed: () => context.push('/review/chat'),
                             icon: const Icon(Icons.chat),
                             label: const Text('自由聊天'),
                           ),
+                          if (state.warnings.isNotEmpty) ...[
+                            const SizedBox(height: 28),
+                            Card(
+                              color: theme.colorScheme.surfaceContainerHighest,
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text('本次提示',
+                                        style: theme.textTheme.labelMedium),
+                                    const SizedBox(height: 8),
+                                    for (final warning in state.warnings)
+                                      Padding(
+                                        padding:
+                                            const EdgeInsets.only(bottom: 4),
+                                        child: Text(
+                                          '· $warning',
+                                          style: theme.textTheme.bodySmall,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -365,7 +421,10 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
     _answerController.clear();
 
     final stateNow = ref.read(reviewStateProvider);
-    final item = stateNow.questions[stateNow.currentQuestionIndex];
+    if (stateNow.questions.isEmpty) return;
+    final index =
+        stateNow.currentQuestionIndex.clamp(0, stateNow.questions.length - 1).toInt();
+    final item = stateNow.questions[index];
     final db = ref.read(databaseProvider);
 
     await db.insertChatMessage(
@@ -390,6 +449,7 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
 
     try {
       final reply = await ref.read(aiServiceProvider).continueChat(messages: messages);
+      if (!mounted) return;
       setState(() {
         _followUpMessages.add({'role': 'assistant', 'content': reply});
       });
@@ -400,10 +460,11 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
         content: reply,
       );
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _followUpMessages.add({
           'role': 'assistant',
-          'content': '抱歉，请求失败：$e',
+          'content': '抱歉，请求失败：${AIService.describeError(e)}',
         });
       });
     }

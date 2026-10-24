@@ -96,9 +96,16 @@ class _InlineMathSyntax extends md.InlineSyntax {
 }
 
 class _InlineMathBuilder extends MarkdownElementBuilder {
+  // flutter_markdown 0.7 的钩子是 visitElementAfterWithContext，
+  // 之前写成 build(...) 并不 override 任何方法，inline 公式其实一直没被渲染。
   @override
-  Widget? build(BuildContext context, md.Element element, List<Widget?> children) {
-    final latex = element.textContent;
+  Widget? visitElementAfterWithContext(
+    BuildContext context,
+    md.Element element,
+    TextStyle? preferredStyle,
+    TextStyle? parentStyle,
+  ) {
+    final latex = element.textContent.trim();
     if (latex.isEmpty) return const SizedBox.shrink();
     final theme = Theme.of(context);
     return Padding(
@@ -108,7 +115,7 @@ class _InlineMathBuilder extends MarkdownElementBuilder {
         mathStyle: MathStyle.text,
         textStyle: TextStyle(
           fontSize: theme.textTheme.bodyLarge?.fontSize ?? 16,
-          color: theme.textTheme.bodyLarge?.color,
+          color: parentStyle?.color ?? theme.textTheme.bodyLarge?.color,
         ),
         onErrorFallback: (err) => Text(
           '\$$latex\$',

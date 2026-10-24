@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
+import '../../core/constants.dart';
 import '../../data/secure_storage.dart';
 import '../../data/settings_store.dart';
 import '../settings/settings_provider.dart';
@@ -19,6 +20,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   final _modelController = TextEditingController();
   String? _vaultPath;
   int _reviewCount = 5;
+  int _sessionNoteLimit = AppConstants.defaultSessionNoteLimit;
   int _notifyHour = 20;
   int _notifyMinute = 0;
   List<int> _intervals = [1, 6, 15, 38, 95, 238];
@@ -39,12 +41,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     final vaultPath = await SettingsStore.getVaultPath();
     final reviewCount = await SettingsStore.getReviewCount();
+    final sessionNoteLimit = await SettingsStore.getSessionNoteLimit();
     final notifyHour = await SettingsStore.getNotifyHour();
     final notifyMinute = await SettingsStore.getNotifyMinute();
     final intervals = await SettingsStore.getSm2Intervals();
+    if (!mounted) return;
     setState(() {
       _vaultPath = vaultPath;
       _reviewCount = reviewCount;
+      _sessionNoteLimit = sessionNoteLimit;
       _notifyHour = notifyHour;
       _notifyMinute = notifyMinute;
       _intervals = intervals;
@@ -64,25 +69,55 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     ref.invalidate(vaultPathProvider);
   }
 
+  /// 把 SAF 的 content:// 目录 URI 还原成真实路径，还原不了就返回 null。
+  ///
+  /// 旧实现用 `primary[%]?3[A]?:` 去剥前缀，那个正则匹配的是 `primary3:` / `primary3A:`，
+  /// 而不是解码后的 `primary:`，所以选完目录会得到 `/storage/emulated/0/primary:Documents/...`
+  /// 这种不存在的路径，扫描必然空。
   String? _resolvePath(String raw) {
     if (!Platform.isAndroid) return raw;
-    // Convert content URI like content://.../tree/primary%3ADocuments%2FObsidian
-    // to real path like /storage/emulated/0/Documents/Obsidian
-    if (raw.startsWith('content://')) {
-      final parts = raw.split('/');
-      final last = parts.last;
-      final decoded = Uri.decodeComponent(last);
-      if (decoded.startsWith('primary%3A') || decoded.startsWith('primary:')) {
-        return '/storage/emulated/0/${decoded.replaceAll(RegExp(r'^primary[%]?3[A]?:'), '')}';
-      }
+    if (!raw.startsWith('content://')) return raw;
+
+    final decoded = Uri.decodeComponent(raw);
+    // content://com.android.externalstorage.documents/tree/primary%3ADocuments%2FObsidian
+    // 解码后是 .../tree/primary:Documents/Obsidian
+    final treeIndex = decoded.indexOf('tree/');
+    final docIndex = decoded.indexOf('document/');
+    final int start;
+    if (treeIndex >= 0) {
+      start = treeIndex + 'tree/'.length;
+    } else if (docIndex >= 0) {
+      start = docIndex + 'document/'.length;
+    } else {
+      return null;
     }
-    return raw;
+
+    var path = decoded.substring(start);
+    // 有些机型会再拼一段 /document/primary:Notes/A.md，取最后一段
+    final nested = path.indexOf('/document/');
+    if (nested >= 0) {
+      path = path.substring(nested + '/document/'.length);
+    }
+
+    final colon = path.indexOf(':');
+    if (colon <= 0) return null;
+
+    final volume = path.substring(0, colon);
+    final relative = path.substring(colon + 1);
+    final base = volume == 'primary' ? '/storage/emulated/0' : '/storage/$volume';
+    return relative.isEmpty ? base : '$base/$relative';
   }
 
   Future<void> _setReviewCount(int count) async {
     await SettingsStore.setReviewCount(count);
     setState(() => _reviewCount = count);
     ref.invalidate(reviewCountProvider);
+  }
+
+  Future<void> _setSessionNoteLimit(int limit) async {
+    await SettingsStore.setSessionNoteLimit(limit);
+    setState(() => _sessionNoteLimit = limit);
+    ref.invalidate(sessionNoteLimitProvider);
   }
 
   Future<void> _setIntervals(List<int> intervals) async {
@@ -200,12 +235,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   OutlinedButton.icon(
                     onPressed: () async {
                       final result = await FilePicker.platform.getDirectoryPath();
-                      if (result != null) {
-                        final realPath = _resolvePath(result);
-                        if (realPath != null) {
-                          await _saveVaultPath(realPath);
-                        }
+                      if (result == null) return;
+                      if (!context.mounted) return;
+                      final realPath = _resolvePath(result);
+                      if (realPath == null) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('这个目录无法直接读取，请换一个文件夹（不要选 Android/data 内的目录）'),
+                          ),
+                        );
+                        return;
                       }
+                      await _saveVaultPath(realPath);
                     },
                     icon: const Icon(Icons.folder_open),
                     label: const Text('选择笔记文件夹'),
@@ -304,25 +345,63 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
-              child: Row(
+              child: Column(
                 children: [
-                  const Text('每篇笔记出题数'),
-                  const Spacer(),
-                  IconButton(
-                    onPressed: _reviewCount > 1
-                        ? () => _setReviewCount(_reviewCount - 1)
-                        : null,
-                    icon: const Icon(Icons.remove),
+                  Row(
+                    children: [
+                      const Expanded(child: Text('每篇笔记出题数')),
+                      IconButton(
+                        onPressed: _reviewCount > 1
+                            ? () => _setReviewCount(_reviewCount - 1)
+                            : null,
+                        icon: const Icon(Icons.remove),
+                      ),
+                      Text(
+                        '$_reviewCount',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      IconButton(
+                        onPressed: _reviewCount < 10
+                            ? () => _setReviewCount(_reviewCount + 1)
+                            : null,
+                        icon: const Icon(Icons.add),
+                      ),
+                    ],
                   ),
-                  Text(
-                    '$_reviewCount',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  IconButton(
-                    onPressed: _reviewCount < 10
-                        ? () => _setReviewCount(_reviewCount + 1)
-                        : null,
-                    icon: const Icon(Icons.add),
+                  const Divider(height: 24),
+                  Row(
+                    children: [
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('每次复习笔记数'),
+                            SizedBox(height: 2),
+                            Text(
+                              '一次只处理这么多篇，剩余的留到下次',
+                              style: TextStyle(fontSize: 11),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: _sessionNoteLimit > 1
+                            ? () => _setSessionNoteLimit(_sessionNoteLimit - 1)
+                            : null,
+                        icon: const Icon(Icons.remove),
+                      ),
+                      Text(
+                        '$_sessionNoteLimit',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      IconButton(
+                        onPressed: _sessionNoteLimit <
+                                AppConstants.maxSessionNoteLimit
+                            ? () => _setSessionNoteLimit(_sessionNoteLimit + 1)
+                            : null,
+                        icon: const Icon(Icons.add),
+                      ),
+                    ],
                   ),
                 ],
               ),

@@ -1,10 +1,11 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:drift/drift.dart' hide Column;
+import '../../core/constants.dart';
 import '../../data/database/database.dart';
 import '../../data/settings_store.dart';
 import '../../services/ai_service.dart';
+import '../../services/note_content.dart';
 import '../../services/sm2_engine.dart';
 import '../settings/settings_provider.dart';
 import 'review_provider.dart';
@@ -158,23 +159,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       return '你是一位和我一起学习的挚友。我们可以自由讨论任何话题，包括笔记中的知识。';
     }
 
-    final vaultPath = ref.read(vaultPathProvider).valueOrNull;
+    final vaultPath = await ref.read(vaultPathProvider.future);
     final notes = _allNotes.where((n) => _mentionedNoteIds.contains(n.id)).toList();
     final contextParts = <String>[];
     for (final note in notes) {
-      final filePath = vaultPath != null ? '$vaultPath/${note.filePath}' : '';
-      String content = '';
-      if (filePath.isNotEmpty) {
-        try {
-          final file = File(filePath);
-          if (await file.exists()) {
-            final full = await file.readAsString();
-            content = full.length > 2000 ? '${full.substring(0, 2000)}\n\n...(截断)' : full;
-          }
-        } catch (_) {
-          content = '(无法读取文件内容)';
-        }
-      }
+      final loaded = await NoteContentLoader.load(
+        vaultPath,
+        note.filePath,
+        maxChars: AppConstants.maxNoteCharsForChat,
+      );
+      final content = loaded.found ? loaded.text : '(无法读取文件内容)';
       contextParts.add('- ${note.fileName}（来自 ${note.filePath}）：\n$content');
     }
 
@@ -231,18 +225,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         content: reply,
       );
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         if (_messages.isNotEmpty && _messages.last['role'] == 'assistant') {
-          _messages.last['content'] = '抱歉，请求失败：$e';
+          _messages.last['content'] = '抱歉，请求失败：${AIService.describeError(e)}';
         } else {
           _messages.add({
             'role': 'assistant',
-            'content': '抱歉，请求失败：$e',
+            'content': '抱歉，请求失败：${AIService.describeError(e)}',
           });
         }
       });
     } finally {
-      setState(() => _loading = false);
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -282,17 +277,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
       ref.invalidate(overdueProvider);
 
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已通过聊天复习 $updated 篇笔记')),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已通过聊天复习 $updated 篇笔记')),
+      );
     } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('记录复习失败: $e')),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('记录复习失败: $e')),
+      );
     }
   }
 
@@ -381,7 +374,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               child: ListView.separated(
                 shrinkWrap: true,
                 itemCount: suggestions.length,
-                separatorBuilder: (_, __) => Divider(height: 1, indent: 16),
+                separatorBuilder: (_, __) => const Divider(height: 1, indent: 16),
                 itemBuilder: (context, index) {
                   final note = suggestions[index];
                   final isActive = _activeNotes.any((n) => n.id == note.id);

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../data/database/database.dart';
 import 'notes_provider.dart';
 import 'note_detail_screen.dart';
 
@@ -14,7 +13,7 @@ class MonitoredNotesScreen extends ConsumerStatefulWidget {
 class _MonitoredNotesScreenState extends ConsumerState<MonitoredNotesScreen> {
   final _searchController = TextEditingController();
   String _searchQuery = '';
-  Set<String> _selectedTags = {};
+  final Set<String> _selectedTags = <String>{};
   String _sortBy = 'ease';
 
   @override
@@ -189,7 +188,7 @@ class _MonitoredNotesScreenState extends ConsumerState<MonitoredNotesScreen> {
                                   isOverdue
                                       ? '已逾期'
                                       : dueDays != null
-                                          ? '${dueDays}天后'
+                                          ? '$dueDays天后'
                                           : '无记录',
                                   isOverdue
                                       ? Theme.of(context).colorScheme.error

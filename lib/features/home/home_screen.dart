@@ -278,10 +278,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     });
     final day = history[idx].date;
     ref.read(databaseProvider).notesReviewedOnDay(day).then((notes) {
-      if (mounted) setState(() {
-        _expanded30DayNotes = notes;
-        _loading30DayNotes = false;
-      });
+      if (mounted) {
+        setState(() {
+          _expanded30DayNotes = notes;
+          _loading30DayNotes = false;
+        });
+      }
     });
   }
 
@@ -483,10 +485,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     });
     final day = DateTime(month.year, month.month, idx + 1);
     ref.read(databaseProvider).notesReviewedOnDay(day).then((notes) {
-      if (mounted) setState(() {
-        _expandedMonthDayNotes = notes;
-        _loadingMonthDayNotes = false;
-      });
+      if (mounted) {
+        setState(() {
+          _expandedMonthDayNotes = notes;
+          _loadingMonthDayNotes = false;
+        });
+      }
     });
   }
 

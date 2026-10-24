@@ -77,43 +77,87 @@ class ParsedQuestion {
   ParsedQuestion({required this.question, required this.expansion});
 }
 
+/// 题目块起始标记，兼容 `【题目1】`、`【题目】`、`【题目 2】`。
+final RegExp _questionMarker = RegExp(r'【\s*题目\s*\d*\s*】');
+
+/// 拓展块起始标记，连同正文一起吃掉。
+final RegExp _expansionMarker = RegExp(r'【\s*拓展\s*\d*\s*】\s*([\s\S]*)$');
+
+/// 解析流式输出中**已经闭合**的题目块。
+///
+/// 一个题目块只有在后面出现了下一个 `【题目N】` 标记（或整条流结束）时才算写完，
+/// 否则最后一块随时可能继续增长。早期实现直接按 `【题目N】` 切分，会把还没写完的
+/// 拓展当成空串捕获，只能事后靠数组下标偏移去补，这是几个 bug 的共同根源。
+///
+/// [isFinal] 为 true 表示流已结束，最后一块也视作闭合。
+List<ParsedQuestion> parseCompletedQuestions(
+  String response, {
+  bool isFinal = false,
+}) {
+  final markers = _questionMarker.allMatches(response).toList();
+  if (markers.isEmpty) return const [];
+
+  final result = <ParsedQuestion>[];
+  for (var i = 0; i < markers.length; i++) {
+    final isLast = i == markers.length - 1;
+    if (isLast && !isFinal) break;
+
+    final start = markers[i].end;
+    final end = isLast ? response.length : markers[i + 1].start;
+    final block = response.substring(start, end).trim();
+    if (block.isEmpty) continue;
+
+    final expansionMatch = _expansionMarker.firstMatch(block);
+    if (expansionMatch == null) {
+      // 拓展还没开始写，但题目本身已被下一个标记闭合
+      result.add(ParsedQuestion(question: block, expansion: ''));
+      continue;
+    }
+
+    final question = block.substring(0, expansionMatch.start).trim();
+    if (question.isEmpty) continue;
+    result.add(ParsedQuestion(
+      question: question,
+      expansion: expansionMatch.group(1)?.trim() ?? '',
+    ));
+  }
+  return result;
+}
+
+/// 兼容旧调用：整条响应已完整时直接取全部题目块。
+List<ParsedQuestion> parseMultipleQuestions(String response) =>
+    parseCompletedQuestions(response, isFinal: true);
+
+/// 兜底：模型没按编号格式输出时，取单个 `【题目】…【拓展】` 结构。
 ParsedQuestion parseSingleQuestion(String response) {
-  final questionMatch = RegExp(r'【题目】\s*([\s\S]*?)(?=【拓展】|$)').firstMatch(response);
-  final expansionMatch = RegExp(r'【拓展】\s*([\s\S]*?)$').firstMatch(response);
+  final questionMatch = RegExp(r'【\s*题目\s*\d*\s*】\s*([\s\S]*?)(?=【\s*拓展|$)')
+      .firstMatch(response);
+  final expansionMatch =
+      RegExp(r'【\s*拓展\s*\d*\s*】\s*([\s\S]*)$').firstMatch(response);
   return ParsedQuestion(
     question: questionMatch?.group(1)?.trim() ?? '',
     expansion: expansionMatch?.group(1)?.trim() ?? '',
   );
 }
 
-List<ParsedQuestion> parseMultipleQuestions(String response) {
-  final questions = <ParsedQuestion>[];
-  final parts = response.split(RegExp(r'【题目\d*】'));
-  for (int i = 1; i < parts.length; i++) {
-    final part = parts[i].trim();
-    final expIdx = part.indexOf('【拓展');
-    if (expIdx >= 0) {
-      final question = part.substring(0, expIdx).trim();
-      final rest = part.substring(expIdx);
-      final expMatch = RegExp(r'【拓展\d*】\s*([\s\S]*?)$').firstMatch(rest);
-      final expansion = expMatch?.group(1)?.trim() ?? '';
-      if (question.isNotEmpty) {
-        questions.add(ParsedQuestion(question: question, expansion: expansion));
-      }
+ParsedResponse parseEvaluationResponse(String response) {
+  final evalMatch =
+      RegExp(r'【\s*评价\s*】\s*([\s\S]*?)(?=【\s*建议评分|$)').firstMatch(response);
+  final scoreMatch =
+      RegExp(r'【\s*建议评分\s*】\s*([\s\S]*?)(?=【\s*延伸|$)').firstMatch(response);
+  final extMatch = RegExp(r'【\s*延伸\s*】\s*([\s\S]*)$').firstMatch(response);
+
+  int? score;
+  final scoreText = scoreMatch?.group(1)?.trim();
+  if (scoreText != null) {
+    // 取第一个数字，只在 0-5 内采信；避免把「10」读成 1 或把「满分 5 分」读成 5
+    final numberMatch = RegExp(r'\d+').firstMatch(scoreText);
+    if (numberMatch != null) {
+      final value = int.tryParse(numberMatch.group(0)!);
+      if (value != null && value >= 0 && value <= 5) score = value;
     }
   }
-  return questions;
-}
 
-ParsedResponse parseEvaluationResponse(String response) {
-  final evalMatch = RegExp(r'【评价】\s*([\s\S]*?)(?=【建议评分】|$)').firstMatch(response);
-  final scoreMatch = RegExp(r'【建议评分】\s*([\s\S]*?)(?=【延伸】|$)').firstMatch(response);
-  final extMatch = RegExp(r'【延伸】\s*([\s\S]*?)$').firstMatch(response);
-  final scoreText = scoreMatch?.group(1)?.trim();
-  int? score;
-  if (scoreText != null) {
-    score = int.tryParse(RegExp(r'\d').firstMatch(scoreText)?.group(0) ?? '');
-  }
   return ParsedResponse(
     evaluation: evalMatch?.group(1)?.trim() ?? '',
     suggestedScore: score,

@@ -34,6 +34,10 @@ final reviewCountProvider = FutureProvider<int>((ref) async {
   return SettingsStore.getReviewCount();
 });
 
+final sessionNoteLimitProvider = FutureProvider<int>((ref) async {
+  return SettingsStore.getSessionNoteLimit();
+});
+
 final notifyHourProvider = FutureProvider<int>((ref) async {
   return SettingsStore.getNotifyHour();
 });

@@ -31,7 +31,7 @@ class DailyReviewCount {
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
-  AppDatabase.forTesting(QueryExecutor executor) : super(executor);
+  AppDatabase.forTesting(super.executor);
 
   @override
   int get schemaVersion => 2;
@@ -41,7 +41,7 @@ class AppDatabase extends _$AppDatabase {
         onCreate: (m) async {
           await m.createAll();
           await into(appState).insert(AppStateCompanion.insert(
-            id: Value(1),
+            id: const Value(1),
             lastCheckTime: DateTime.now(),
           ));
         },
