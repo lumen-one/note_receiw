@@ -5,12 +5,12 @@ build/
 *.json.dart
 .packages
 .pub/
-pubspec.lock
 flutter_*.png
 *.iml
 .idea/
 .metadata
 *.lock
+!pubspec.lock
 
 # Gradle 本地缓存与本机路径配置，不应入库
 android/.gradle/

@@ -1,7 +1,7 @@
 # NoteReview App — AGENTS.md
 
 ## 项目定位
-Flutter Android 应用，AI + 遗忘曲线复习 Obsidian 笔记。本文件位于仓库根目录，下文所有命令均在仓库根目录执行。
+Flutter Android 应用，AI + 遗忘曲线复习 Obsidian 笔记。本文件位于仓库根目录（本地路径 `phone_note_receiw/phone_note_reviewIDET/`），下文所有命令均在仓库根目录执行。
 
 ## 关键架构决策
 - **状态管理**: Riverpod（`lib/features/*/` 下各模块有自己的 provider 文件）
@@ -18,6 +18,7 @@ flutter pub get
 dart run build_runner build --delete-conflicting-outputs
 flutter build apk --release --android-skip-build-dependency-validation
 ```
+- 依赖版本由 `pubspec.lock` 锁定并已入库，`flutter pub get` 按锁定版本安装；增删依赖后要把 lockfile 一起提交
 
 ## 数据库
 - schema version 2（v1→v2 迁移: 给 `note_files` 加 `tags` 列）
@@ -29,10 +30,9 @@ flutter build apk --release --android-skip-build-dependency-validation
 1. **workmanager 本地补丁** — `packages/workmanager/` 是对 0.5.2 的 Kotlin patch，后续应升级到官方新版
 2. **Android 编译标志** — 当前需 `--android-skip-build-dependency-validation`（Gradle/AGP/Kotlin 版本匹配问题）
 3. **缺少自动化 UI 测试** — 纯逻辑层（SM-2、解析器）已有单测，界面仍靠手测
-4. **pubspec.lock 在 .gitignore 中** — 不提交 lockfile（非标准 Flutter 做法），配合本地 patch 的 workmanager，换机器重建依赖有风险
-5. **无法上架 Google Play** — `MANAGE_EXTERNAL_STORAGE` 属受限权限；`READ_EXTERNAL_STORAGE` 在 Android 13+ 已失效。当前分发方式只能是侧载
-6. **依赖停维护** — `flutter_markdown` 已被官方归档（`flutter_math_fork` 也更新缓慢），升级 Flutter 前需评估
-7. **models 目录为空** — 模型类内联在各 provider/service 文件中
+4. **无法上架 Google Play** — `MANAGE_EXTERNAL_STORAGE` 属受限权限；`READ_EXTERNAL_STORAGE` 在 Android 13+ 已失效。当前分发方式只能是侧载
+5. **依赖停维护** — `flutter_markdown` 已被官方归档（`flutter_math_fork` 也更新缓慢），升级 Flutter 前需评估
+6. **models 目录为空** — 模型类内联在各 provider/service 文件中
 
 ## 测试
 ```bash
